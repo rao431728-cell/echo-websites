@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echo Websites — AI Website Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#07070d;--surface:#0f0f18;--surface-2:#161622;--surface-3:#1e1e2e;
+  --border:rgba(255,255,255,0.06);--border-focus:rgba(124,92,252,0.5);
+  --text:#e8e8f0;--text-dim:#6b6b80;--text-faint:#44445a;
+  --accent:#7c5cfc;--accent-light:#9d8aff;--accent-glow:rgba(124,92,252,0.25);
+  --accent-surface:rgba(124,92,252,0.08);
+  --success:#10b981;--success-glow:rgba(16,185,129,0.2);
+  --error:#ef4444;
+  --radius:10px;--radius-lg:14px;
+}
+html{height:100%}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100%;overflow:hidden}
+
+/* === HEADER === */
+.header{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;
+  background:rgba(7,7,13,0.8);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);flex-shrink:0;z-index:100}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-mark{width:28px;height:28px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,var(--accent-light),var(--accent));
+  box-shadow:0 0 20px var(--accent-glow);animation:pulse-orb 4s ease-in-out infinite}
+@keyframes pulse-orb{0%,100%{box-shadow:0 0 16px var(--accent-glow);transform:scale(1)}50%{box-shadow:0 0 28px var(--accent-glow);transform:scale(1.06)}}
+.logo h1{font-size:17px;font-weight:700;letter-spacing:-0.5px}
+.logo h1 span{color:var(--accent-light)}
+.header-badge{margin-left:12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;
+  color:var(--accent-light);background:var(--accent-surface);padding:3px 10px;border-radius:20px;border:1px solid rgba(124,92,252,0.15)}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.kbd{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 6px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:4px;color:var(--text-dim)}
+
+/* === LAYOUT === */
+.app{display:grid;grid-template-columns:420px 1fr;height:calc(100% - 56px)}
+@media(max-width:960px){.app{grid-template-columns:1fr;height:auto;overflow:auto}
+  .preview-panel{min-height:60vh}}
+
+/* === INPUT PANEL === */
+.input-panel{overflow-y:auto;border-right:1px solid var(--border);display:flex;flex-direction:column}
+.input-panel::-webkit-scrollbar{width:4px}
+.input-panel::-webkit-scrollbar-track{background:transparent}
+.input-panel::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:4px}
+.form-area{padding:24px;flex:1}
+.form-heading{font-size:15px;font-weight:600;margin-bottom:20px;color:var(--text)}
+
+/* Form elements */
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+  color:var(--text-dim);margin-bottom:6px}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:10px 14px;color:var(--text);font-family:'Inter',sans-serif;
+  font-size:13px;transition:border-color 0.2s,box-shadow 0.2s;outline:none}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow)}
+.form-input::placeholder,.form-textarea::placeholder{color:var(--text-faint)}
+.form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b6b80' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;cursor:pointer}
+.form-select option{background:var(--surface);color:var(--text)}
+.form-textarea{min-height:80px;max-height:200px;resize:vertical;line-height:1.6}
+.form-hint{font-size:11px;color:var(--text-faint);margin-top:4px}
+
+/* Style cards */
+.style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.style-card{padding:10px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface-2);
+  text-align:center;cursor:pointer;transition:all 0.2s;font-size:12px;font-weight:500;color:var(--text-dim);position:relative;overflow:hidden}
+.style-card::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.2s}
+.style-card:hover{border-color:rgba(255,255,255,0.12);color:var(--text)}
+.style-card.selected{border-color:var(--accent);color:var(--accent-light);background:var(--accent-surface)}
+.style-card .style-icon{font-size:18px;display:block;margin-bottom:4px}
+
+/* Palette swatches */
+.palette-grid{display:flex;gap:8px;flex-wrap:wrap}
+.palette-swatch{width:40px;height:40px;border-radius:50%;cursor:pointer;position:relative;
+  border:2px solid transparent;transition:all 0.2s;flex-shrink:0}
+.palette-swatch:hover{transform:scale(1.1)}
+.palette-swatch.selected{border-color:var(--accent);box-shadow:0 0 12px var(--accent-glow)}
+.palette-swatch.selected::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)}
+.palette-label{font-size:10px;text-align:center;color:var(--text-faint);margin-top:2px;width:40px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item{display:flex;flex-direction:column;align-items:center;gap:2px}
+
+/* Feature pills */
+.feature-grid{display:flex;flex-wrap:wrap;gap:6px}
+.feature-pill{padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;
+  color:var(--text-dim);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;
+  font-family:'Inter',sans-serif;user-select:none}
+.feature-pill:hover{border-color:rgba(255,255,255,0.15);color:var(--text)}
+.feature-pill.selected{border-color:var(--accent);color:var(--accent-light);background:var(--accent-surface)}
+
+/* Generate button */
+.generate-btn{width:100%;padding:13px 24px;border:none;border-radius:var(--radius);font-family:'Inter',sans-serif;
+  font-size:14px;font-weight:600;cursor:pointer;transition:all 0.3s;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--accent),#6366f1);color:#fff;
+  box-shadow:0 4px 20px var(--accent-glow);margin-top:6px}
+.generate-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 28px rgba(124,92,252,0.35);filter:brightness(1.08)}
+.generate-btn:active:not(:disabled){transform:translateY(0)}
+.generate-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.generate-btn .shimmer{position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);
+  transform:translateX(-100%);animation:shimmer 2s infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
+
+/* Divider */
+.divider{height:1px;background:var(--border);margin:20px 0}
+
+/* Examples */
+.examples-toggle{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--text-dim);
+  cursor:pointer;margin-bottom:10px;user-select:none}
+.examples-toggle:hover{color:var(--text)}
+.examples-toggle .arrow{transition:transform 0.2s;font-size:10px}
+.examples-toggle .arrow.open{transform:rotate(90deg)}
+.example-list{display:none;flex-direction:column;gap:6px}
+.example-list.open{display:flex}
+.example-item{padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  cursor:pointer;transition:all 0.2s;font-size:12px;color:var(--text-dim);line-height:1.5}
+.example-item:hover{border-color:rgba(255,255,255,0.12);color:var(--text);background:var(--surface-3)}
+.example-item .example-title{font-weight:600;color:var(--text);margin-bottom:2px}
+
+/* === PIPELINE === */
+.pipeline-area{border-top:1px solid var(--border);padding:16px 24px;display:none}
+.pipeline-area.visible{display:block}
+.pipeline-bar{height:2px;background:var(--surface-3);border-radius:2px;margin-bottom:14px;overflow:hidden}
+.pipeline-bar-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-light));
+  border-radius:2px;transition:width 0.5s ease}
+.pipeline-steps{display:flex;flex-direction:column;gap:4px}
+.p-step{display:flex;align-items:center;gap:10px;padding:6px 0;opacity:0.3;transition:opacity 0.3s}
+.p-step.active{opacity:1}
+.p-step.done{opacity:0.6}
+.p-step-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;flex-shrink:0;background:var(--surface-3);color:var(--text-faint);
+  border:1.5px solid var(--border);transition:all 0.3s}
+.p-step.active .p-step-icon{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+.p-step.done .p-step-icon{background:var(--success);border-color:var(--success);color:#fff}
+.p-step-spinner{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--surface-3);
+  border-top-color:var(--accent);animation:spin 0.7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.p-step-label{font-size:12px;font-weight:500;color:var(--text)}
+.p-step-detail{font-size:11px;color:var(--text-dim);margin-top:1px}
+
+/* === PREVIEW PANEL === */
+.preview-panel{display:flex;flex-direction:column;background:var(--surface);overflow:hidden}
+.preview-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;
+  border-bottom:1px solid var(--border);flex-shrink:0;gap:12px}
+.preview-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)}
+.preview-controls{display:flex;align-items:center;gap:6px}
+.preview-timer{font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;min-width:40px}
+.ctrl-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text-dim);transition:all 0.2s;
+  font-size:13px;padding:0}
+.ctrl-btn:hover,.ctrl-btn.active{border-color:var(--accent);color:var(--accent)}
+.ctrl-btn svg{width:14px;height:14px}
+.ctrl-sep{width:1px;height:18px;background:var(--border);margin:0 2px}
+.action-btn{height:30px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text-dim);transition:all 0.2s;
+  font-size:11px;font-weight:500;font-family:'Inter',sans-serif}
+.action-btn:hover{border-color:var(--accent);color:var(--accent)}
+.action-btn.download-btn{background:var(--accent-surface);border-color:rgba(124,92,252,0.2);color:var(--accent-light)}
+.action-btn.download-btn:hover{background:rgba(124,92,252,0.15)}
+
+.preview-frame{flex:1;position:relative;overflow:hidden;background:#fff}
+.preview-frame.mobile-view iframe{max-width:390px;margin:0 auto;display:block;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.preview-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:16px;background:var(--surface);z-index:1}
+.placeholder-icon{width:80px;height:80px;border-radius:20px;background:var(--surface-2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center}
+.placeholder-icon svg{opacity:0.2}
+.placeholder-text{font-size:14px;color:var(--text-dim);text-align:center}
+.placeholder-sub{font-size:12px;color:var(--text-faint);max-width:280px;text-align:center;line-height:1.6}
+iframe{width:100%;height:100%;border:none;display:block}
+
+/* === IMAGE UPLOAD === */
+.upload-zone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:16px;text-align:center;
+  cursor:pointer;transition:all 0.2s;background:var(--surface-2);position:relative}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:var(--accent-surface)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-icon{font-size:20px;color:var(--text-faint);margin-bottom:4px}
+.upload-text{font-size:11px;color:var(--text-dim);line-height:1.5}
+.upload-text span{color:var(--accent-light);font-weight:500}
+.upload-previews{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.upload-thumb{width:48px;height:48px;border-radius:6px;object-fit:cover;border:1px solid var(--border);
+  position:relative;display:inline-block}
+.upload-thumb img{width:100%;height:100%;object-fit:cover;border-radius:5px}
+.upload-thumb .remove-img{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;
+  background:var(--error);color:#fff;font-size:8px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border:1.5px solid var(--bg);font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark"></div>
+    <h1>Echo <span>Websites</span></h1>
+  </div>
+  <div class="header-badge">AI Powered</div>
+  <div class="header-right">
+    <span class="kbd">Ctrl+Enter</span>
+    <span style="font-size:11px;color:var(--text-faint)">to generate</span>
+  </div>
+</div>
+
+<div class="app">
+  <!-- INPUT PANEL -->
+  <div class="input-panel">
+    <div class="form-area">
+      <div class="form-heading">Create Your Website</div>
+
+      <div class="form-group">
+        <label class="form-label">Project Name</label>
+        <input type="text" class="form-input" id="projectName" placeholder="e.g. Lumina Photography, TechFlow, Bella's Kitchen">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Website Type</label>
+        <select class="form-select" id="websiteType">
+          <option value="">Let AI decide</option>
+          <option value="portfolio">Portfolio</option>
+          <option value="landing-page">Landing Page</option>
+          <option value="restaurant">Restaurant</option>
+          <option value="business">Business</option>
+          <option value="agency">Agency</option>
+          <option value="saas">SaaS / Software</option>
+          <option value="ecommerce">E-commerce</option>
+          <option value="blog">Blog / Magazine</option>
+          <option value="event">Event / Conference</option>
+          <option value="personal">Personal / Resume</option>
+          <option value="fitness">Fitness / Wellness</option>
+          <option value="real-estate">Real Estate</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Describe Your Vision</label>
+        <textarea class="form-textarea" id="prompt" placeholder="A dark, cinematic portfolio for a fine art photographer with a masonry gallery, smooth scroll animations, and a moody color palette..."></textarea>
+        <div class="form-hint">Be specific about aesthetics, features, and mood</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Style</label>
+        <div class="style-grid">
+          <div class="style-card" data-style="professional" onclick="selectStyle(this)">
+            <span class="style-icon">&#9632;</span>Professional
+          </div>
+          <div class="style-card" data-style="creative" onclick="selectStyle(this)">
+            <span class="style-icon">&#9830;</span>Creative
+          </div>
+          <div class="style-card" data-style="minimal" onclick="selectStyle(this)">
+            <span class="style-icon">&#9675;</span>Minimal
+          </div>
+          <div class="style-card" data-style="bold" onclick="selectStyle(this)">
+            <span class="style-icon">&#9733;</span>Bold
+          </div>
+          <div class="style-card" data-style="luxury" onclick="selectStyle(this)">
+            <span class="style-icon">&#10022;</span>Luxury
+          </div>
+          <div class="style-card" data-style="tech" onclick="selectStyle(this)">
+            <span class="style-icon">&#9672;</span>Tech
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Color Palette</label>
+        <div class="palette-grid">
+          <div class="palette-item">
+            <div class="palette-swatch selected" data-palette="auto" onclick="selectPalette(this)"
+              style="background:conic-gradient(from 0deg,#7c5cfc,#ec4899,#f97316,#10b981,#0ea5e9,#7c5cfc)"></div>
+            <div class="palette-label">Auto</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="midnight" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#1a1a3e,#6c5ce7,#a29bfe)"></div>
+            <div class="palette-label">Midnight</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="ocean" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#0a2540,#0ea5e9,#38bdf8)"></div>
+            <div class="palette-label">Ocean</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="ember" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#2a0a0a,#ef4444,#f97316)"></div>
+            <div class="palette-label">Ember</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="forest" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#0a1a0a,#10b981,#34d399)"></div>
+            <div class="palette-label">Forest</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="rose" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#2a0a1e,#ec4899,#f9a8d4)"></div>
+            <div class="palette-label">Rose</div>
+          </div>
+          <div class="palette-item">
+            <div class="palette-swatch" data-palette="mono" onclick="selectPalette(this)"
+              style="background:linear-gradient(135deg,#1a1a1a,#525252,#d4d4d4)"></div>
+            <div class="palette-label">Mono</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Include Sections</label>
+        <div class="feature-grid">
+          <button class="feature-pill" data-feature="contact" onclick="toggleFeature(this)">Contact Form</button>
+          <button class="feature-pill" data-feature="gallery" onclick="toggleFeature(this)">Gallery</button>
+          <button class="feature-pill" data-feature="testimonials" onclick="toggleFeature(this)">Testimonials</button>
+          <button class="feature-pill" data-feature="pricing" onclick="toggleFeature(this)">Pricing</button>
+          <button class="feature-pill" data-feature="faq" onclick="toggleFeature(this)">FAQ</button>
+          <button class="feature-pill" data-feature="team" onclick="toggleFeature(this)">Team</button>
+          <button class="feature-pill" data-feature="newsletter" onclick="toggleFeature(this)">Newsletter</button>
+          <button class="feature-pill" data-feature="stats" onclick="toggleFeature(this)">Stats</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Your Images <span style="color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="imageInput" multiple accept="image/*" onchange="handleImageUpload(event)">
+          <div class="upload-icon">&#128247;</div>
+          <div class="upload-text">Drop images here or <span>browse</span><br>They'll be used in your generated website</div>
+        </div>
+        <div class="upload-previews" id="uploadPreviews"></div>
+      </div>
+
+      <button class="generate-btn" id="generateBtn" onclick="generate()">
+        Generate Website
+      </button>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="examples-toggle" onclick="toggleExamples()">
+          <span class="arrow" id="exArrow">&#9654;</span>
+          Quick examples
+        </div>
+        <div class="example-list" id="exampleList">
+          <div class="example-item" onclick="useExample('portfolio','creative','midnight','A moody, cinematic portfolio for a fine art photographer with masonry gallery, smooth scroll animations, client testimonials, and a booking form','Lumina Photography')">
+            <div class="example-title">Photographer Portfolio</div>
+            Dark cinematic feel, masonry gallery, booking form
+          </div>
+          <div class="example-item" onclick="useExample('saas','tech','ocean','A sleek SaaS landing page for a developer tool with feature comparison, pricing tiers, code snippets, integration logos, and a free trial CTA','DevFlow')">
+            <div class="example-title">SaaS Landing Page</div>
+            Tech-forward, pricing tiers, feature grid
+          </div>
+          <div class="example-item" onclick="useExample('restaurant','luxury','ember','An upscale restaurant website with a beautiful menu organized by courses, reservation form, chef story, food gallery, and evening ambiance','La Maison')">
+            <div class="example-title">Upscale Restaurant</div>
+            Warm tones, elegant menu, reservation CTA
+          </div>
+          <div class="example-item" onclick="useExample('agency','bold','','A bold creative agency website with case studies, a process section, team grid, client logos, and strong typography','Pixel & Co')">
+            <div class="example-title">Creative Agency</div>
+            Bold typography, case studies, team section
+          </div>
+          <div class="example-item" onclick="useExample('fitness','bold','forest','A high-energy fitness coach website with training programs, transformation gallery, booking calendar, testimonials, and motivational copy','Iron Will Fitness')">
+            <div class="example-title">Fitness Coach</div>
+            Energetic, transformation gallery, booking
+          </div>
+          <div class="example-item" onclick="useExample('personal','minimal','mono','A clean, minimal personal portfolio for a UX designer with case study cards, about section, skills, and a contact form','Alex Chen')">
+            <div class="example-title">UX Designer Portfolio</div>
+            Minimal, case study cards, clean layout
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="pipeline-area" id="pipeline">
+      <div class="pipeline-bar"><div class="pipeline-bar-fill" id="pipelineBar"></div></div>
+      <div class="pipeline-steps">
+        <div class="p-step" data-stage="intent">
+          <div class="p-step-icon">1</div>
+          <div><div class="p-step-label">Intent Analyzer</div><div class="p-step-detail">Understanding your request</div></div>
+        </div>
+        <div class="p-step" data-stage="architect">
+          <div class="p-step-icon">2</div>
+          <div><div class="p-step-label">Site Architect</div><div class="p-step-detail">Planning structure</div></div>
+        </div>
+        <div class="p-step" data-stage="design">
+          <div class="p-step-icon">3</div>
+          <div><div class="p-step-label">Design System</div><div class="p-step-detail">Creating visual identity</div></div>
+        </div>
+        <div class="p-step" data-stage="copy">
+          <div class="p-step-icon">4</div>
+          <div><div class="p-step-label">Copywriter</div><div class="p-step-detail">Writing content</div></div>
+        </div>
+        <div class="p-step" data-stage="build">
+          <div class="p-step-icon">5</div>
+          <div><div class="p-step-label">Component Builder</div><div class="p-step-detail">Building sections</div></div>
+        </div>
+        <div class="p-step" data-stage="qa">
+          <div class="p-step-icon">6</div>
+          <div><div class="p-step-label">QA Agent</div><div class="p-step-detail">Quality check</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW PANEL -->
+  <div class="preview-panel">
+    <div class="preview-toolbar">
+      <div class="preview-title">Preview</div>
+      <div class="preview-controls">
+        <span class="preview-timer" id="timer"></span>
+        <div class="ctrl-sep"></div>
+        <button class="ctrl-btn active" onclick="setView('desktop',this)" title="Desktop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </button>
+        <button class="ctrl-btn" onclick="setView('mobile',this)" title="Mobile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+        </button>
+        <div class="ctrl-sep"></div>
+        <button class="ctrl-btn" onclick="openNewTab()" title="Open in new tab" id="newTabBtn" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+        </button>
+        <button class="action-btn download-btn" onclick="download()" id="downloadBtn" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download
+        </button>
+      </div>
+    </div>
+    <div class="preview-frame" id="previewWrap">
+      <div class="preview-placeholder" id="placeholder">
+        <div class="placeholder-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        </div>
+        <div class="placeholder-text">Your website will appear here</div>
+        <div class="placeholder-sub">Fill in the details on the left and hit Generate to create a fully interactive, 3D website with AI</div>
+      </div>
+      <iframe id="preview"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5050';
+let generatedHTML = null;
+let timerInterval = null;
+let startTime = null;
+let completedSteps = 0;
+const TOTAL_STEPS = 6;
+let uploadedImages = []; // array of {name, dataUrl}
+
+// === Image Upload ===
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+function handleImageUpload(e) { handleFiles(e.target.files); }
+
+function handleFiles(files) {
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    if (uploadedImages.length >= 8) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      uploadedImages.push({ name: file.name, dataUrl: ev.target.result });
+      renderUploadPreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeImage(idx) {
+  uploadedImages.splice(idx, 1);
+  renderUploadPreviews();
+}
+
+function renderUploadPreviews() {
+  const container = document.getElementById('uploadPreviews');
+  container.innerHTML = uploadedImages.map((img, i) =>
+    `<div class="upload-thumb"><img src="${img.dataUrl}" alt="${img.name}"><div class="remove-img" onclick="removeImage(${i})">×</div></div>`
+  ).join('');
+}
+
+// === Form interactions ===
+function selectStyle(el) {
+  document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+  el.classList.toggle('selected');
+}
+function selectPalette(el) {
+  document.querySelectorAll('.palette-swatch').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function toggleFeature(el) {
+  el.classList.toggle('selected');
+}
+
+function getFormData() {
+  const selectedStyle = document.querySelector('.style-card.selected');
+  const selectedPalette = document.querySelector('.palette-swatch.selected');
+  const selectedFeatures = [...document.querySelectorAll('.feature-pill.selected')].map(p => p.dataset.feature);
+  return {
+    prompt: document.getElementById('prompt').value.trim(),
+    business_name: document.getElementById('projectName').value.trim(),
+    images: uploadedImages.map(img => img.dataUrl),
+    website_type: document.getElementById('websiteType').value,
+    style: selectedStyle ? selectedStyle.dataset.style : '',
+    color_preference: selectedPalette ? selectedPalette.dataset.palette : 'auto',
+    features: selectedFeatures
+  };
+}
+
+// === Examples ===
+function toggleExamples() {
+  const list = document.getElementById('exampleList');
+  const arrow = document.getElementById('exArrow');
+  list.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+function useExample(type, style, palette, prompt, name) {
+  document.getElementById('projectName').value = name;
+  document.getElementById('websiteType').value = type;
+  document.getElementById('prompt').value = prompt;
+  // Select style
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.style === style);
+  });
+  // Select palette
+  if (palette) {
+    document.querySelectorAll('.palette-swatch').forEach(c => {
+      c.classList.toggle('selected', c.dataset.palette === palette);
+    });
+  }
+  document.getElementById('prompt').focus();
+}
+
+// === Timer ===
+function startTimer() {
+  startTime = Date.now();
+  const el = document.getElementById('timer');
+  timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    el.textContent = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+  }, 1000);
+}
+function stopTimer() { clearInterval(timerInterval); }
+
+// === Pipeline ===
+function resetPipeline() {
+  completedSteps = 0;
+  document.getElementById('pipelineBar').style.width = '0%';
+  document.querySelectorAll('.p-step').forEach(step => {
+    step.classList.remove('active','done');
+    const icon = step.querySelector('.p-step-icon');
+    if (!icon) {
+      const spinner = step.querySelector('.p-step-spinner');
+      if (spinner) {
+        const newIcon = document.createElement('div');
+        newIcon.className = 'p-step-icon';
+        newIcon.textContent = step.dataset.stage === 'intent' ? '1' :
+          step.dataset.stage === 'architect' ? '2' : step.dataset.stage === 'design' ? '3' :
+          step.dataset.stage === 'copy' ? '4' : step.dataset.stage === 'build' ? '5' : '6';
+        spinner.replaceWith(newIcon);
+      }
+    }
+  });
+}
+
+function updateStep(stage, status, message) {
+  const base = stage.replace('_done','');
+  const step = document.querySelector(`.p-step[data-stage="${base}"]`);
+  if (!step) return;
+
+  if (status === 'active') {
+    step.classList.add('active');
+    step.classList.remove('done');
+    const icon = step.querySelector('.p-step-icon');
+    if (icon) {
+      const spinner = document.createElement('div');
+      spinner.className = 'p-step-spinner';
+      icon.replaceWith(spinner);
+    }
+  } else if (status === 'done') {
+    step.classList.remove('active');
+    step.classList.add('done');
+    const spinner = step.querySelector('.p-step-spinner');
+    if (spinner) {
+      const check = document.createElement('div');
+      check.className = 'p-step-icon';
+      check.textContent = '✓';
+      spinner.replaceWith(check);
+    }
+    completedSteps++;
+    document.getElementById('pipelineBar').style.width = (completedSteps / TOTAL_STEPS * 100) + '%';
+  }
+  if (message) {
+    const detail = step.querySelector('.p-step-detail');
+    if (detail) detail.textContent = message;
+  }
+}
+
+// === Generate ===
+async function generate() {
+  const data = getFormData();
+  if (!data.prompt && !data.business_name && !data.website_type) {
+    document.getElementById('prompt').focus();
+    return;
+  }
+
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="shimmer"></span>Generating...';
+  document.getElementById('downloadBtn').style.display = 'none';
+  document.getElementById('newTabBtn').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'flex';
+  const pipeline = document.getElementById('pipeline');
+  pipeline.classList.add('visible');
+  generatedHTML = null;
+  resetPipeline();
+  startTimer();
+
+  try {
+    const resp = await fetch(`${API}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try { handleEvent(JSON.parse(line)); } catch(e) {}
+      }
+    }
+  } catch(err) {
+    document.getElementById('timer').textContent = 'Error';
+    alert('Cannot connect to backend. Make sure the server is running on port 5050.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Generate Website';
+    stopTimer();
+  }
+}
+
+function handleEvent(event) {
+  const { stage, message, html } = event;
+  if (stage === 'error') {
+    stopTimer();
+    document.getElementById('timer').textContent = 'Error';
+    alert('Error: ' + message);
+    return;
+  }
+  if (stage === 'complete') {
+    generatedHTML = html;
+    showPreview(html);
+    document.getElementById('downloadBtn').style.display = 'inline-flex';
+    document.getElementById('newTabBtn').style.display = 'flex';
+    document.getElementById('placeholder').style.display = 'none';
+    return;
+  }
+  if (stage.endsWith('_done')) {
+    updateStep(stage, 'done', message);
+  } else {
+    updateStep(stage, 'active', message);
+  }
+}
+
+// === Preview ===
+function showPreview(html) {
+  const iframe = document.getElementById('preview');
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  if (iframe._blobUrl) URL.revokeObjectURL(iframe._blobUrl);
+  iframe._blobUrl = url;
+  iframe.src = url;
+}
+
+function download() {
+  if (!generatedHTML) return;
+  const name = document.getElementById('projectName').value.trim() || 'echo-website';
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const blob = new Blob([generatedHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = slug + '.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function setView(mode, btn) {
+  const wrap = document.getElementById('previewWrap');
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  wrap.classList.toggle('mobile-view', mode === 'mobile');
+}
+
+function openNewTab() {
+  if (!generatedHTML) return;
+  const blob = new Blob([generatedHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+// === Keyboard shortcut ===
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    if (!document.getElementById('generateBtn').disabled) generate();
+  }
+});
+</script>
+</body>
+</html>
