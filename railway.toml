@@ -2,4 +2,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "gunicorn backend.app:app --bind 0.0.0.0:$PORT"
+startCommand = "gunicorn --config gunicorn.conf.py backend.app:app --bind 0.0.0.0:$PORT"

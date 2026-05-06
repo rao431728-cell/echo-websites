@@ -374,28 +374,20 @@ iframe{width:100%;height:100%;border:none;display:block}
     <div class="pipeline-area" id="pipeline">
       <div class="pipeline-bar"><div class="pipeline-bar-fill" id="pipelineBar"></div></div>
       <div class="pipeline-steps">
-        <div class="p-step" data-stage="intent">
+        <div class="p-step" data-stage="plan">
           <div class="p-step-icon">1</div>
-          <div><div class="p-step-label">Intent Analyzer</div><div class="p-step-detail">Understanding your request</div></div>
-        </div>
-        <div class="p-step" data-stage="architect">
-          <div class="p-step-icon">2</div>
-          <div><div class="p-step-label">Site Architect</div><div class="p-step-detail">Planning structure</div></div>
-        </div>
-        <div class="p-step" data-stage="design">
-          <div class="p-step-icon">3</div>
-          <div><div class="p-step-label">Design System</div><div class="p-step-detail">Creating visual identity</div></div>
+          <div><div class="p-step-label">Planning</div><div class="p-step-detail">Intent, structure & design</div></div>
         </div>
         <div class="p-step" data-stage="copy">
-          <div class="p-step-icon">4</div>
+          <div class="p-step-icon">2</div>
           <div><div class="p-step-label">Copywriter</div><div class="p-step-detail">Writing content</div></div>
         </div>
         <div class="p-step" data-stage="build">
-          <div class="p-step-icon">5</div>
+          <div class="p-step-icon">3</div>
           <div><div class="p-step-label">Component Builder</div><div class="p-step-detail">Building sections</div></div>
         </div>
         <div class="p-step" data-stage="qa">
-          <div class="p-step-icon">6</div>
+          <div class="p-step-icon">4</div>
           <div><div class="p-step-label">QA Agent</div><div class="p-step-detail">Quality check</div></div>
         </div>
       </div>
@@ -445,7 +437,7 @@ let generatedHTML = null;
 let timerInterval = null;
 let startTime = null;
 let completedSteps = 0;
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 4;
 let uploadedImages = []; // array of {name, dataUrl}
 
 // === Image Upload ===
@@ -560,9 +552,8 @@ function resetPipeline() {
       if (spinner) {
         const newIcon = document.createElement('div');
         newIcon.className = 'p-step-icon';
-        newIcon.textContent = step.dataset.stage === 'intent' ? '1' :
-          step.dataset.stage === 'architect' ? '2' : step.dataset.stage === 'design' ? '3' :
-          step.dataset.stage === 'copy' ? '4' : step.dataset.stage === 'build' ? '5' : '6';
+        newIcon.textContent = step.dataset.stage === 'plan' ? '1' :
+          step.dataset.stage === 'copy' ? '2' : step.dataset.stage === 'build' ? '3' : '4';
         spinner.replaceWith(newIcon);
       }
     }

@@ -148,145 +148,101 @@ def build_enhanced_prompt(data):
     return "\n".join(parts)
 
 
-def agent_intent_analyzer(user_prompt):
+def agent_plan(user_prompt):
+    """Combined intent + architecture + design in a single API call."""
     system = (
-        "You are a senior creative strategist. Given a user's website request, analyze their needs precisely.\n\n"
-        "CRITICAL: Follow the user's request EXACTLY. If they say 'photographer portfolio', the website_type MUST be 'portfolio' "
-        "and everything must be tailored to a photographer. If they say 'restaurant', every detail must be restaurant-specific. "
-        "Do NOT generalize or deviate from what they asked for.\n\n"
-        "Return a JSON object with:\n"
-        '- "website_type": string (match what the user asked for exactly)\n'
-        '- "audience": string (specific target demographic for THIS type of business)\n'
-        '- "goal": string (primary conversion goal appropriate for THIS business)\n'
-        '- "tone": string (visual/verbal tone — must match the style they requested)\n'
-        '- "key_features": list of 8-12 strings (features SPECIFIC to this exact business type. '
-        "A photographer needs: hero with portfolio image, gallery grid, lightbox, about/bio, client list, testimonials, booking CTA. "
-        "A restaurant needs: hero with food, menu with categories/prices, reservation, chef story, hours/location. "
-        "A SaaS needs: product hero, feature grid, pricing tiers, integrations, testimonials, FAQ. "
+        "You are a senior creative strategist, UX architect, and visual designer.\n"
+        "Given a website request, produce a SINGLE JSON object with three top-level keys: "
+        '"intent", "architecture", and "design".\n\n'
+        "CRITICAL: Follow the user's request EXACTLY. If they say 'photographer portfolio', "
+        "everything must be photographer-specific. Do NOT generalize.\n\n"
+        '=== "intent" ===\n'
+        '- "website_type": string (match what the user asked for)\n'
+        '- "audience": string (specific target demographic)\n'
+        '- "goal": string (primary conversion goal)\n'
+        '- "tone": string (visual/verbal tone)\n'
+        '- "key_features": list of 8-12 strings (features SPECIFIC to this business type. '
+        "A photographer needs: gallery grid, lightbox, about/bio, testimonials, booking CTA. "
+        "A restaurant needs: menu with prices, reservation, chef story, hours/location. "
+        "A SaaS needs: feature grid, pricing tiers, integrations, FAQ. "
         "Always include: sticky nav, mobile menu, footer, contact section)\n"
         '- "industry": string\n'
-        '- "design_inspiration": string (describe the exact visual style — specific to their industry and preferences)\n'
-        '- "emotional_response": string (what a visitor should feel)\n\n'
-        "If the user specified a business name, use it throughout.\n"
-        "If the user specified a style (professional, creative, minimal, bold, luxury, tech), match it exactly.\n"
-        "If the user specified a color palette preference, acknowledge it.\n\n"
-        "Return ONLY valid JSON, no markdown fences."
-    )
-    raw = call_claude(system, user_prompt, max_tokens=1024)
-    fallback = {
-        "website_type": "website",
-        "audience": "general",
-        "goal": "inform visitors",
-        "tone": "professional",
-        "key_features": ["hero section", "about section", "services section", "testimonials", "contact section", "footer"],
-        "industry": "general",
-        "design_inspiration": "clean modern website",
-        "emotional_response": "trust and interest",
-    }
-    return parse_json_response(raw, fallback)
-
-
-def agent_site_architect(intent):
-    system = (
-        "You are a senior UX architect. Design the page structure for this SPECIFIC website type.\n\n"
-        "CRITICAL: The sections MUST be tailored to the exact website type and industry. "
-        "A photographer portfolio has DIFFERENT sections than a restaurant or a SaaS product. "
-        "Do NOT use generic sections. Every section must serve this specific business.\n\n"
-        "Return a JSON object with:\n"
-        '- "title": string (use the business name if provided, otherwise create a memorable one)\n'
-        '- "nav_items": list of 4-6 strings (navigation labels specific to this business)\n'
+        '- "design_inspiration": string\n'
+        '- "emotional_response": string\n\n'
+        '=== "architecture" ===\n'
+        '- "title": string (use the business name if provided, otherwise create one)\n'
+        '- "nav_items": list of 4-6 short strings\n'
         '- "sections": list of 7-10 objects, each with:\n'
         '  - "id": string (html id, lowercase hyphenated)\n'
         '  - "type": string (hero, about, gallery, services, testimonials, contact, footer, features, pricing, cta, stats, faq, team, portfolio, process, clients, menu, case-studies)\n'
-        '  - "purpose": string (what this section does for the conversion funnel)\n'
-        '  - "layout": string (exact layout description: "2-column with image left", "3-card grid", "masonry grid", "alternating zigzag")\n'
-        '  - "content_hints": string (specific content: how many items, what kind)\n'
-        '  - "visual_effect": string (parallax, fade-in-up, staggered-reveal, counter-animation, gradient-text)\n\n'
-        "RULES:\n"
-        "- If the user requested specific sections (gallery, pricing, FAQ, etc.), INCLUDE them\n"
-        "- Hero is always first, footer is always last\n"
-        "- Section types must match the business: a restaurant gets 'menu', a portfolio gets 'gallery', SaaS gets 'pricing'\n"
-        "- Use the actual business name in the title field\n"
-        "- Nav items should be SHORT (1-2 words) and specific to this site\n\n"
-        "Return ONLY valid JSON, no markdown fences."
-    )
-    raw = call_claude(system, json.dumps(intent), max_tokens=2048)
-    fallback = {
-        "title": intent.get("website_type", "My Website").title(),
-        "nav_items": ["Home", "About", "Services", "Contact"],
-        "sections": [
-            {"id": "hero", "type": "hero", "purpose": "First impression", "layout": "centered", "content_hints": "Main headline and CTA", "visual_effect": "fade-in"},
-            {"id": "about", "type": "about", "purpose": "Tell the story", "layout": "2-column", "content_hints": "Bio and image", "visual_effect": "fade-in-up"},
-            {"id": "services", "type": "services", "purpose": "Show offerings", "layout": "3-card grid", "content_hints": "3-4 service cards", "visual_effect": "staggered reveal"},
-            {"id": "testimonials", "type": "testimonials", "purpose": "Social proof", "layout": "carousel", "content_hints": "3 quotes", "visual_effect": "fade-in"},
-            {"id": "contact", "type": "contact", "purpose": "Conversion", "layout": "centered", "content_hints": "Contact form or CTA", "visual_effect": "fade-in-up"},
-            {"id": "footer", "type": "footer", "purpose": "Navigation and info", "layout": "3-column", "content_hints": "Links and social", "visual_effect": "none"},
-        ],
-    }
-    return parse_json_response(raw, fallback)
-
-
-def agent_design(intent, architecture):
-    system = (
-        "You are an award-winning visual designer. Create a design system for this SPECIFIC website.\n\n"
-        "CRITICAL: The design must match the website type, industry, and any style preferences the user specified. "
-        "A photographer portfolio looks NOTHING like a SaaS landing page or a restaurant site. "
-        "Match the mood exactly.\n\n"
-        "Return a JSON object with:\n\n"
+        '  - "purpose": string\n'
+        '  - "layout": string (e.g. "2-column with image left", "3-card grid")\n'
+        '  - "content_hints": string\n'
+        '  - "visual_effect": string\n'
+        "Hero is always first, footer always last. Sections must be specific to the business type.\n"
+        "If the user requested specific sections (gallery, pricing, FAQ, etc.), INCLUDE them.\n\n"
+        '=== "design" ===\n'
         "COLOR PALETTE (all hex):\n"
-        '- "primary_color": main brand color (tailored to this specific industry and mood)\n'
-        '- "primary_light": lighter tint for hovers\n'
-        '- "primary_dark": darker shade for active states\n'
-        '- "secondary_color": complementary color\n'
-        '- "accent_color": high-contrast pop color for CTAs\n'
-        '- "background_color": page background (dark for moody/tech/luxury, light for minimal/clean)\n'
-        '- "background_alt": alternate section background\n'
-        '- "surface_color": card backgrounds\n'
-        '- "text_color": primary text (must have 4.5:1+ contrast against background)\n'
-        '- "text_secondary": secondary text\n'
-        '- "text_on_primary": text on primary_color backgrounds\n'
-        '- "gradient_start": hero/CTA gradient start\n'
-        '- "gradient_end": hero/CTA gradient end\n'
-        '- "gradient_angle": string (e.g. "135deg")\n\n'
+        '- "primary_color", "primary_light", "primary_dark"\n'
+        '- "secondary_color", "accent_color"\n'
+        '- "background_color" (dark for moody/tech/luxury), "background_alt", "surface_color"\n'
+        '- "text_color" (4.5:1+ contrast against bg), "text_secondary", "text_on_primary"\n'
+        '- "gradient_start", "gradient_end", "gradient_angle" (string e.g. "135deg")\n'
         "TYPOGRAPHY:\n"
-        '- "heading_font": Google Fonts name (match the mood — "Playfair Display" for luxury, "Space Grotesk" for tech, "Sora" for modern)\n'
-        '- "body_font": Google Fonts name (legible — "Inter", "DM Sans", "Plus Jakarta Sans")\n'
-        '- "hero_size": string (fluid clamp, e.g. "clamp(2.5rem, 6vw, 5rem)")\n'
-        '- "h2_size": string\n'
-        '- "body_size": string\n'
-        '- "heading_weight": string\n'
-        '- "heading_letter_spacing": string\n\n'
-        "SPACING & SHAPE:\n"
-        '- "border_radius": string\n'
-        '- "section_padding": string\n'
-        '- "card_padding": string\n'
-        '- "max_width": string\n\n'
+        '- "heading_font": Google Fonts name (e.g. "Playfair Display" for luxury, "Space Grotesk" for tech)\n'
+        '- "body_font": Google Fonts name (e.g. "Inter", "DM Sans")\n'
+        '- "hero_size": string (e.g. "clamp(2.5rem, 6vw, 5rem)")\n'
+        '- "h2_size", "body_size", "heading_weight", "heading_letter_spacing"\n'
+        "SPACING:\n"
+        '- "border_radius", "section_padding", "card_padding", "max_width"\n'
         "EFFECTS:\n"
-        '- "shadow_sm": CSS box-shadow\n'
-        '- "shadow_lg": CSS box-shadow\n'
-        '- "glass_effect": boolean\n'
-        '- "use_gradients": boolean\n'
-        '- "style_notes": string (2-3 sentences describing the visual direction)\n\n'
+        '- "shadow_sm", "shadow_lg": CSS box-shadow strings\n'
+        '- "glass_effect": boolean, "use_gradients": boolean\n'
+        '- "style_notes": string (2-3 sentences on visual direction)\n\n'
+        "The design MUST match the website type and industry. A restaurant looks nothing like a SaaS.\n"
         "Return ONLY valid JSON, no markdown fences."
     )
-    prompt = json.dumps({"intent": intent, "architecture": architecture})
-    raw = call_claude(system, prompt, max_tokens=2048)
+    raw = call_claude(system, user_prompt, max_tokens=4096)
     fallback = {
-        "primary_color": "#6c5ce7", "primary_light": "#a29bfe", "primary_dark": "#4a3db8",
-        "secondary_color": "#00cec9", "accent_color": "#fd79a8",
-        "background_color": "#0a0a0f", "background_alt": "#12121a",
-        "surface_color": "#1a1a26", "text_color": "#e4e4ef", "text_secondary": "#7a7a8e",
-        "text_on_primary": "#ffffff",
-        "gradient_start": "#6c5ce7", "gradient_end": "#a29bfe", "gradient_angle": "135deg",
-        "heading_font": "Inter", "body_font": "Inter",
-        "hero_size": "clamp(2.5rem, 6vw, 5rem)", "h2_size": "clamp(1.8rem, 4vw, 3rem)",
-        "body_size": "1.05rem", "heading_weight": "700", "heading_letter_spacing": "-0.02em",
-        "border_radius": "12px", "section_padding": "100px", "card_padding": "32px", "max_width": "1200px",
-        "shadow_sm": "0 2px 8px rgba(0,0,0,0.1)", "shadow_lg": "0 8px 32px rgba(0,0,0,0.2)",
-        "glass_effect": False, "use_gradients": True,
-        "style_notes": "Modern dark theme with purple accents",
+        "intent": {
+            "website_type": "website", "audience": "general", "goal": "inform visitors",
+            "tone": "professional",
+            "key_features": ["hero section", "about section", "services section", "testimonials", "contact section", "footer"],
+            "industry": "general", "design_inspiration": "clean modern website",
+            "emotional_response": "trust and interest",
+        },
+        "architecture": {
+            "title": "My Website", "nav_items": ["Home", "About", "Services", "Contact"],
+            "sections": [
+                {"id": "hero", "type": "hero", "purpose": "First impression", "layout": "centered", "content_hints": "Main headline and CTA", "visual_effect": "fade-in"},
+                {"id": "about", "type": "about", "purpose": "Tell the story", "layout": "2-column", "content_hints": "Bio and image", "visual_effect": "fade-in-up"},
+                {"id": "services", "type": "services", "purpose": "Show offerings", "layout": "3-card grid", "content_hints": "3-4 service cards", "visual_effect": "staggered reveal"},
+                {"id": "testimonials", "type": "testimonials", "purpose": "Social proof", "layout": "carousel", "content_hints": "3 quotes", "visual_effect": "fade-in"},
+                {"id": "contact", "type": "contact", "purpose": "Conversion", "layout": "centered", "content_hints": "Contact form or CTA", "visual_effect": "fade-in-up"},
+                {"id": "footer", "type": "footer", "purpose": "Navigation and info", "layout": "3-column", "content_hints": "Links and social", "visual_effect": "none"},
+            ],
+        },
+        "design": {
+            "primary_color": "#6c5ce7", "primary_light": "#a29bfe", "primary_dark": "#4a3db8",
+            "secondary_color": "#00cec9", "accent_color": "#fd79a8",
+            "background_color": "#0a0a0f", "background_alt": "#12121a",
+            "surface_color": "#1a1a26", "text_color": "#e4e4ef", "text_secondary": "#7a7a8e",
+            "text_on_primary": "#ffffff",
+            "gradient_start": "#6c5ce7", "gradient_end": "#a29bfe", "gradient_angle": "135deg",
+            "heading_font": "Inter", "body_font": "Inter",
+            "hero_size": "clamp(2.5rem, 6vw, 5rem)", "h2_size": "clamp(1.8rem, 4vw, 3rem)",
+            "body_size": "1.05rem", "heading_weight": "700", "heading_letter_spacing": "-0.02em",
+            "border_radius": "12px", "section_padding": "100px", "card_padding": "32px", "max_width": "1200px",
+            "shadow_sm": "0 2px 8px rgba(0,0,0,0.1)", "shadow_lg": "0 8px 32px rgba(0,0,0,0.2)",
+            "glass_effect": False, "use_gradients": True,
+            "style_notes": "Modern dark theme with purple accents",
+        },
     }
-    return parse_json_response(raw, fallback)
+    result = parse_json_response(raw, fallback)
+    intent = result.get("intent", fallback["intent"])
+    architecture = result.get("architecture", fallback["architecture"])
+    design = result.get("design", fallback["design"])
+    return intent, architecture, design
 
 
 def agent_copywriter(intent, architecture):
@@ -1167,18 +1123,10 @@ def generate():
 
     def stream():
         try:
-            yield json.dumps({"stage": "intent", "message": "Analyzing your request..."}) + "\n"
-            intent = agent_intent_analyzer(enhanced_prompt)
-            yield json.dumps({"stage": "intent_done", "message": f"Building a {intent.get('website_type', 'custom')} website"}) + "\n"
-
-            yield json.dumps({"stage": "architect", "message": "Designing page structure..."}) + "\n"
-            architecture = agent_site_architect(intent)
+            yield json.dumps({"stage": "plan", "message": "Planning intent, structure & design..."}) + "\n"
+            intent, architecture, design = agent_plan(enhanced_prompt)
             section_count = len(architecture.get("sections", []))
-            yield json.dumps({"stage": "architect_done", "message": f"Planned {section_count} sections"}) + "\n"
-
-            yield json.dumps({"stage": "design", "message": "Creating visual identity..."}) + "\n"
-            design = agent_design(intent, architecture)
-            yield json.dumps({"stage": "design_done", "message": f"{design.get('style_notes', 'custom design')[:60]}"}) + "\n"
+            yield json.dumps({"stage": "plan_done", "message": f"{intent.get('website_type', 'custom')} — {section_count} sections planned"}) + "\n"
 
             yield json.dumps({"stage": "copy", "message": "Writing content..."}) + "\n"
             copy = agent_copywriter(intent, architecture)
@@ -1192,7 +1140,6 @@ def generate():
             yield json.dumps({"stage": "qa", "message": "Running quality checks..."}) + "\n"
             final_html = agent_qa(html, intent)
 
-            # Inject user-uploaded images if provided
             if user_images:
                 final_html = inject_user_images(final_html, user_images)
 
