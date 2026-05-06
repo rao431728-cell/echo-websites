@@ -575,6 +575,11 @@ def health():
     return jsonify({"status": "ok", "service": "echo-websites"})
 
 
+import uuid
+
+jobs = {}
+
+
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()
@@ -585,85 +590,45 @@ def generate():
 
     enhanced_prompt = build_enhanced_prompt(data)
     user_images = data.get("images", [])
+    job_id = str(uuid.uuid4())
 
-    def sse(data):
-        return f"data: {json.dumps(data)}\n\n"
+    job = {"status": "planning", "message": "Planning intent, structure & design...", "html": None, "error": None}
+    jobs[job_id] = job
 
-    def stream():
+    def run():
         try:
-            yield sse({"stage": "plan", "message": "Planning intent, structure & design..."})
-
-            plan_result = {"intent": None, "architecture": None, "design": None, "error": None}
-            plan_done = threading.Event()
-
-            def _plan_worker():
-                try:
-                    i, a, d = agent_plan(enhanced_prompt)
-                    plan_result["intent"] = i
-                    plan_result["architecture"] = a
-                    plan_result["design"] = d
-                except Exception as e:
-                    plan_result["error"] = e
-                finally:
-                    plan_done.set()
-
-            threading.Thread(target=_plan_worker, daemon=True).start()
-            elapsed = 0
-            while not plan_done.wait(timeout=10):
-                elapsed += 10
-                yield sse({"stage": "ping", "message": f"Planning... ({elapsed}s)"})
-
-            if plan_result["error"] is not None:
-                raise plan_result["error"]
-
-            intent = plan_result["intent"] or {}
-            architecture = plan_result["architecture"] or {}
-            design = plan_result["design"] or {}
+            intent, architecture, design = agent_plan(enhanced_prompt)
             section_count = len(architecture.get("sections", []))
-            yield sse({"stage": "plan_done", "message": f"{intent.get('website_type', 'custom')} — {section_count} sections planned"})
+            job["status"] = "building"
+            job["message"] = f"Building {section_count} sections with 3D effects..."
 
-            yield sse({"stage": "build", "message": f"Building {section_count} sections with 3D effects..."})
-
-            build_result = {"html": None, "error": None}
-            build_done = threading.Event()
-
-            def _build_worker():
-                try:
-                    build_result["html"] = agent_component_builder(intent, architecture, design)
-                except Exception as e:
-                    build_result["error"] = e
-                finally:
-                    build_done.set()
-
-            threading.Thread(target=_build_worker, daemon=True).start()
-            elapsed = 0
-            while not build_done.wait(timeout=10):
-                elapsed += 10
-                yield sse({"stage": "ping", "message": f"Building sections... ({elapsed}s)"})
-
-            if build_result["error"] is not None:
-                raise build_result["error"]
-
-            html = build_result["html"] or ""
-            yield sse({"stage": "build_done", "message": f"Built {section_count} interactive sections"})
-
+            html = agent_component_builder(intent, architecture, design)
             if user_images:
                 html = inject_user_images(html, user_images)
 
-            yield sse({"stage": "complete", "html": html})
-
+            job["status"] = "complete"
+            job["message"] = "Done"
+            job["html"] = html
         except Exception as e:
-            yield sse({"stage": "error", "message": str(e)})
+            job["status"] = "error"
+            job["message"] = str(e)
 
-    return Response(
-        stream_with_context(stream()),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/status/<job_id>", methods=["GET"])
+def job_status(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    resp = {"status": job["status"], "message": job["message"]}
+    if job["status"] == "complete":
+        resp["html"] = job["html"]
+        del jobs[job_id]
+    elif job["status"] == "error":
+        del jobs[job_id]
+    return jsonify(resp)
 
 
 if __name__ == "__main__":

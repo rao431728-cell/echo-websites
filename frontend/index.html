@@ -604,87 +604,41 @@ async function generate() {
   generatedHTML = null;
   resetPipeline();
   startTimer();
-  const controller = new AbortController();
-  const timeoutMs = 180000;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const resp = await fetch(`${API}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-      signal: controller.signal
+      body: JSON.stringify(data)
     });
+    if (!resp.ok) throw new Error(`Backend error (${resp.status})`);
+    const { job_id } = await resp.json();
+    if (!job_id) throw new Error('No job ID returned');
 
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      throw new Error(errText || `Backend error (${resp.status})`);
-    }
+    updateStep('plan', 'active', 'Planning intent, structure & design...');
 
-    // Try streaming first, fall back to full-body read
-    if (resp.body && typeof resp.body.getReader === 'function') {
-      try {
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let streamWorked = false;
+    // Poll for status every 3 seconds
+    while (true) {
+      await new Promise(r => setTimeout(r, 3000));
+      const poll = await fetch(`${API}/status/${job_id}`);
+      if (!poll.ok) throw new Error(`Status check failed (${poll.status})`);
+      const result = await poll.json();
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          streamWorked = true;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop();
-          for (const part of parts) {
-            const dataLine = part.split('\n').find(l => l.startsWith('data: '));
-            if (!dataLine) continue;
-            try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
-          }
-        }
-        if (buffer.trim()) {
-          const dataLine = buffer.split('\n').find(l => l.startsWith('data: '));
-          if (dataLine) {
-            try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
-          }
-        }
-        if (!streamWorked) throw new Error('stream empty');
-      } catch(streamErr) {
-        if (streamErr.name === 'AbortError') throw streamErr;
-        // Stream failed — retry with full body read
-        const resp2 = await fetch(`${API}/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-          signal: controller.signal
-        });
-        const text = await resp2.text();
-        const events = text.split('\n\n');
-        for (const part of events) {
-          const dataLine = part.split('\n').find(l => l.startsWith('data: '));
-          if (!dataLine) continue;
-          try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
-        }
-      }
-    } else {
-      // No streaming support — read full body
-      const text = await resp.text();
-      const events = text.split('\n\n');
-      for (const part of events) {
-        const dataLine = part.split('\n').find(l => l.startsWith('data: '));
-        if (!dataLine) continue;
-        try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
+      if (result.status === 'building') {
+        updateStep('plan', 'done', 'Plan complete');
+        updateStep('build', 'active', result.message);
+      } else if (result.status === 'complete') {
+        updateStep('plan', 'done', 'Plan complete');
+        updateStep('build', 'done', 'Website built');
+        handleEvent({ stage: 'complete', html: result.html });
+        break;
+      } else if (result.status === 'error') {
+        throw new Error(result.message);
       }
     }
   } catch(err) {
     document.getElementById('timer').textContent = 'Error';
-    if (err.name === 'AbortError') {
-      alert('Generation timed out. Please try again with a shorter prompt or fewer images.');
-    } else {
-      alert('Generation failed: ' + (err.message || 'Unknown error'));
-    }
+    alert('Generation failed: ' + (err.message || 'Unknown error'));
   } finally {
-    clearTimeout(timeoutId);
     btn.disabled = false;
     btn.innerHTML = 'Generate Website';
     stopTimer();
