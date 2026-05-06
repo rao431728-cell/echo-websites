@@ -14,7 +14,8 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 CORS(app)
 
 client = anthropic.Anthropic()
-MODEL = "claude-sonnet-4-6"
+MODEL_PLAN = "claude-sonnet-4-6"
+MODEL_BUILD = "claude-opus-4-6"
 
 MAX_CONCURRENT_JOBS = 10
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
@@ -32,20 +33,28 @@ def cleanup_stale_jobs():
             del jobs[jid]
 
 
-def call_claude(system_prompt, user_prompt, max_tokens=4096):
+def call_claude_thinking(system_prompt, user_prompt, model=MODEL_PLAN, budget_tokens=5000, max_tokens=16000):
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=max_tokens,
+        temperature=1,
+        thinking={
+            "type": "enabled",
+            "budget_tokens": budget_tokens,
+        },
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return response.content[0].text
+    for block in response.content:
+        if block.type == "text":
+            return block.text
+    return ""
 
 
-def call_claude_stream(system_prompt, user_prompt, max_tokens=5000):
+def call_claude_stream(system_prompt, user_prompt, model=MODEL_BUILD, max_tokens=8000):
     chunks = []
     with client.messages.stream(
-        model=MODEL,
+        model=model,
         max_tokens=max_tokens,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
@@ -191,7 +200,7 @@ def agent_plan(user_prompt):
         "Effects: shadow_sm, shadow_lg (CSS strings), glass_effect (bool), use_gradients (bool), style_notes (string).\n\n"
         "Return ONLY valid JSON, no markdown fences."
     )
-    raw = call_claude(system, user_prompt, max_tokens=4096)
+    raw = call_claude_thinking(system, user_prompt, model=MODEL_PLAN, budget_tokens=5000, max_tokens=16000)
     fallback = {
         "intent": {
             "website_type": "website", "audience": "general", "goal": "inform visitors",
@@ -546,7 +555,7 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
     }
     user_prompt = json.dumps(builder_data)
 
-    raw = call_claude_stream(system_build, user_prompt, max_tokens=5000)
+    raw = call_claude_stream(system_build, user_prompt, model=MODEL_BUILD, max_tokens=12000)
     raw = re.sub(r"^```(?:html)?\s*\n?", "", raw.strip(), flags=re.IGNORECASE)
     raw = re.sub(r"\n?```\s*$", "", raw)
 

@@ -616,7 +616,7 @@ async function generate() {
 
     updateStep('plan', 'active', 'Planning intent, structure & design...');
 
-    const MAX_POLLS = 60;
+    const MAX_POLLS = 90;
     for (let i = 0; i < MAX_POLLS; i++) {
       await new Promise(r => setTimeout(r, 3000));
       const poll = await fetch(`${API}/status/${job_id}`);
