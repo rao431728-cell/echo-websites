@@ -208,7 +208,7 @@ def agent_plan(user_prompt):
 
 # ─── CALL 2: Component Builder (streamed, single call for all sections) ───────
 
-def agent_component_builder(intent, architecture, design):
+def agent_component_builder(intent, architecture, design, user_description=""):
     """Hardcoded skeleton + ONE streamed API call for all section HTML."""
 
     sections = architecture.get("sections", [])
@@ -501,8 +501,11 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
 
     system_build = (
         "You are an expert frontend developer. Generate ALL section HTML for a complete website.\n"
-        "Output ONLY raw HTML — no markdown fences, no doctype/head/style/script.\n"
-        "Write vivid, specific copy inline — tailored to this exact business. NEVER use generic filler.\n\n"
+        "Output ONLY raw HTML — no markdown fences, no doctype/head/style/script.\n\n"
+        "CRITICAL: Every heading, paragraph, button label, testimonial, stat, and piece of copy "
+        "must be SPECIFIC to this exact business. Use the business name, industry, audience, "
+        "and key features provided. NEVER write generic placeholder text like 'Welcome to our website' "
+        "or 'We provide quality services'. Instead write copy that could ONLY belong to this business.\n\n"
         "AVAILABLE CSS CLASSES (already defined — just use them):\n"
         "Layout: container, grid, two-col, section-header, img-grid\n"
         "Cards: card animate (with i.fas.fa-icon, h3, p inside)\n"
@@ -529,13 +532,21 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
         "- Write ALL sections listed below, in order, one after another\n"
     )
 
-    user_prompt = json.dumps({
+    builder_data = {
+        "original_request": user_description,
         "website_type": intent.get("website_type", "website"),
         "business_name": title,
+        "audience": intent.get("audience", "general"),
+        "goal": intent.get("goal", "inform visitors"),
         "tone": intent.get("tone", "professional"),
         "industry": intent.get("industry", "general"),
+        "key_features": intent.get("key_features", []),
+        "design_inspiration": intent.get("design_inspiration", ""),
+        "emotional_response": intent.get("emotional_response", ""),
+        "style_notes": design.get("style_notes", ""),
         "sections": sections_spec,
-    })
+    }
+    user_prompt = json.dumps(builder_data)
 
     raw = call_claude_stream(system_build, user_prompt, max_tokens=5000)
     raw = re.sub(r"^```(?:html)?\s*\n?", "", raw.strip(), flags=re.IGNORECASE)
@@ -602,7 +613,7 @@ def generate():
             job["status"] = "building"
             job["message"] = f"Building {section_count} sections with 3D effects..."
 
-            html = agent_component_builder(intent, architecture, design)
+            html = agent_component_builder(intent, architecture, design, enhanced_prompt)
             if user_images:
                 html = inject_user_images(html, user_images)
 
