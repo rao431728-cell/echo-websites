@@ -641,6 +641,12 @@ async function generate() {
         }
       }
     }
+    if (buffer.trim()) {
+      const dataLine = buffer.split('\n').find(l => l.startsWith('data: '));
+      if (dataLine) {
+        try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
+      }
+    }
   } catch(err) {
     document.getElementById('timer').textContent = 'Error';
     if (err.name === 'AbortError') {
