@@ -4,7 +4,7 @@ import json
 import time
 import threading
 import anthropic
-from flask import Flask, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -560,7 +560,15 @@ def inject_user_images(html, images):
     return html
 
 
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
+
+@app.route("/", methods=["GET"])
+def index():
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
 
 @app.route("/health", methods=["GET"])
 def health():

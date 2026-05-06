@@ -424,7 +424,8 @@ iframe{width:100%;height:100%;border:none;display:block}
 </div>
 
 <script>
-const API = 'https://echo-websites-production.up.railway.app';
+const API = window.location.origin !== 'null' && !window.location.protocol.startsWith('file')
+  ? '' : 'https://echo-websites-production.up.railway.app';
 let generatedHTML = null;
 let timerInterval = null;
 let startTime = null;
