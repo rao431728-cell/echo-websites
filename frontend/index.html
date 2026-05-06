@@ -603,13 +603,22 @@ async function generate() {
   generatedHTML = null;
   resetPipeline();
   startTimer();
+  const controller = new AbortController();
+  const timeoutMs = 180000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const resp = await fetch(`${API}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal: controller.signal
     });
+
+    if (!resp.ok || !resp.body) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(errText || `Backend error (${resp.status})`);
+    }
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -623,13 +632,30 @@ async function generate() {
       buffer = lines.pop();
       for (const line of lines) {
         if (!line.trim()) continue;
-        try { handleEvent(JSON.parse(line)); } catch(e) {}
+        try {
+          handleEvent(JSON.parse(line));
+        } catch (e) {
+          console.warn('Failed to parse stream event:', line, e);
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        handleEvent(JSON.parse(buffer.trim()));
+      } catch (e) {
+        console.warn('Failed to parse final stream event:', buffer, e);
       }
     }
   } catch(err) {
     document.getElementById('timer').textContent = 'Error';
-    alert('Cannot connect to backend. Make sure the server is running on port 5050.');
+    if (err.name === 'AbortError') {
+      alert('Generation timed out. Please try again with a shorter prompt or fewer images.');
+    } else {
+      alert('Generation failed: ' + (err.message || 'Unknown error'));
+    }
   } finally {
+    clearTimeout(timeoutId);
     btn.disabled = false;
     btn.innerHTML = 'Generate Website';
     stopTimer();
