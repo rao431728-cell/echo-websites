@@ -616,34 +616,63 @@ async function generate() {
       signal: controller.signal
     });
 
-    if (!resp.ok || !resp.body) {
+    if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
       throw new Error(errText || `Backend error (${resp.status})`);
     }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    // Try streaming first, fall back to full-body read
+    if (resp.body && typeof resp.body.getReader === 'function') {
+      try {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamWorked = false;
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop();
-      for (const part of parts) {
-        const dataLine = part.split('\n').find(l => l.startsWith('data: '));
-        if (!dataLine) continue;
-        try {
-          handleEvent(JSON.parse(dataLine.slice(6)));
-        } catch (e) {
-          console.warn('Failed to parse SSE event:', dataLine, e);
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          streamWorked = true;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+          for (const part of parts) {
+            const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+            if (!dataLine) continue;
+            try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
+          }
+        }
+        if (buffer.trim()) {
+          const dataLine = buffer.split('\n').find(l => l.startsWith('data: '));
+          if (dataLine) {
+            try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
+          }
+        }
+        if (!streamWorked) throw new Error('stream empty');
+      } catch(streamErr) {
+        if (streamErr.name === 'AbortError') throw streamErr;
+        // Stream failed — retry with full body read
+        const resp2 = await fetch(`${API}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          signal: controller.signal
+        });
+        const text = await resp2.text();
+        const events = text.split('\n\n');
+        for (const part of events) {
+          const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+          try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
         }
       }
-    }
-    if (buffer.trim()) {
-      const dataLine = buffer.split('\n').find(l => l.startsWith('data: '));
-      if (dataLine) {
+    } else {
+      // No streaming support — read full body
+      const text = await resp.text();
+      const events = text.split('\n\n');
+      for (const part of events) {
+        const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+        if (!dataLine) continue;
         try { handleEvent(JSON.parse(dataLine.slice(6))); } catch(e) {}
       }
     }
