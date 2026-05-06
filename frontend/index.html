@@ -616,8 +616,8 @@ async function generate() {
 
     updateStep('plan', 'active', 'Planning intent, structure & design...');
 
-    // Poll for status every 3 seconds
-    while (true) {
+    const MAX_POLLS = 60;
+    for (let i = 0; i < MAX_POLLS; i++) {
       await new Promise(r => setTimeout(r, 3000));
       const poll = await fetch(`${API}/status/${job_id}`);
       if (!poll.ok) throw new Error(`Status check failed (${poll.status})`);
@@ -630,11 +630,12 @@ async function generate() {
         updateStep('plan', 'done', 'Plan complete');
         updateStep('build', 'done', 'Website built');
         handleEvent({ stage: 'complete', html: result.html });
-        break;
+        return;
       } else if (result.status === 'error') {
         throw new Error(result.message);
       }
     }
+    throw new Error('Generation timed out — please try again');
   } catch(err) {
     document.getElementById('timer').textContent = 'Error';
     alert('Generation failed: ' + (err.message || 'Unknown error'));

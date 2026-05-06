@@ -2,9 +2,11 @@ import os
 import re
 import json
 import time
+import uuid
 import threading
+import html as html_mod
 import anthropic
-from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -13,6 +15,21 @@ CORS(app)
 
 client = anthropic.Anthropic()
 MODEL = "claude-sonnet-4-6"
+
+MAX_CONCURRENT_JOBS = 10
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+JOB_TTL_SECONDS = 600
+
+jobs = {}
+jobs_lock = threading.Lock()
+
+
+def cleanup_stale_jobs():
+    now = time.time()
+    with jobs_lock:
+        stale = [jid for jid, j in jobs.items() if now - j["created_at"] > JOB_TTL_SECONDS]
+        for jid in stale:
+            del jobs[jid]
 
 
 def call_claude(system_prompt, user_prompt, max_tokens=4096):
@@ -26,7 +43,6 @@ def call_claude(system_prompt, user_prompt, max_tokens=4096):
 
 
 def call_claude_stream(system_prompt, user_prompt, max_tokens=5000):
-    """Streamed API call — keeps the connection alive while tokens generate."""
     chunks = []
     with client.messages.stream(
         model=MODEL,
@@ -71,6 +87,19 @@ def parse_json_response(raw, fallback=None):
         except (json.JSONDecodeError, TypeError):
             pass
     return fallback
+
+
+def hex_to_rgb(hex_color, default="10,10,15"):
+    hex_color = hex_color.strip()
+    if hex_color.startswith("#") and len(hex_color) == 7:
+        try:
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16)
+            b = int(hex_color[5:7], 16)
+            return f"{r},{g},{b}"
+        except ValueError:
+            pass
+    return default
 
 
 def build_enhanced_prompt(data):
@@ -154,7 +183,7 @@ def agent_plan(user_prompt):
         '  "purpose", "layout" (e.g. "3-card grid", "2-col image+text"), "content_hints", "visual_effect"\n'
         "Hero first, footer last. Sections specific to the business type.\n\n"
         '=== "design" ===\n'
-        "All hex colors: primary_color, primary_light, primary_dark, secondary_color, accent_color,\n"
+        "All hex colors (must be #RRGGBB format): primary_color, primary_light, primary_dark, secondary_color, accent_color,\n"
         "background_color, background_alt, surface_color, text_color, text_secondary, text_on_primary,\n"
         "gradient_start, gradient_end, gradient_angle (string).\n"
         "Typography: heading_font, body_font (Google Fonts), hero_size, h2_size, body_size, heading_weight, heading_letter_spacing.\n"
@@ -209,10 +238,9 @@ def agent_plan(user_prompt):
 # ─── CALL 2: Component Builder (streamed, single call for all sections) ───────
 
 def agent_component_builder(intent, architecture, design, user_description=""):
-    """Hardcoded skeleton + ONE streamed API call for all section HTML."""
-
     sections = architecture.get("sections", [])
     title = architecture.get("title", "Website")
+    safe_title = html_mod.escape(title)
     heading_font = design.get("heading_font", "Inter")
     body_font = design.get("body_font", "Inter")
     nav_items = architecture.get("nav_items", [s.get("id", "").replace("-", " ").title() for s in sections[:5]])
@@ -241,18 +269,20 @@ def agent_component_builder(intent, architecture, design, user_description=""):
     shadow_sm = d.get("shadow_sm", "0 2px 8px rgba(0,0,0,0.1)")
     shadow_lg = d.get("shadow_lg", "0 8px 32px rgba(0,0,0,0.2)")
 
+    bg_rgb = hex_to_rgb(bg)
+
     nav_html = ""
     for i, item in enumerate(nav_items):
         sid = sections[i].get("id", "") if i < len(sections) else ""
-        nav_html += f'<a href="#{sid}">{item}</a>\n'
+        safe_item = html_mod.escape(str(item))
+        nav_html += f'<a href="#{sid}">{safe_item}</a>\n'
 
-    # ── Hardcoded skeleton: head, CSS, nav, JS ──
     skeleton_top = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
+<title>{safe_title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="{font_url}" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -271,21 +301,17 @@ html{{scroll-behavior:smooth}}
 body{{font-family:var(--body-font);color:var(--text);background:var(--bg);line-height:1.6;overflow-x:hidden}}
 .container{{max-width:1200px;margin:0 auto;padding:0 24px;position:relative}}
 
-/* Loader */
 .page-loader{{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity .6s,visibility .6s}}
 .page-loader.hidden{{opacity:0;visibility:hidden;pointer-events:none}}
 .loader-ring{{width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}}
 @keyframes spin{{to{{transform:rotate(360deg)}}}}
 
-/* Scroll progress */
 .scroll-progress{{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--grad-start),var(--grad-end));z-index:10001;width:0;transition:width .1s}}
 
-/* Cursor */
 .cursor-glow{{position:fixed;width:24px;height:24px;border-radius:50%;pointer-events:none;z-index:9999;background:radial-gradient(circle,var(--primary),transparent 70%);opacity:.4;transform:translate(-50%,-50%);transition:width .3s,height .3s,opacity .3s;mix-blend-mode:screen}}
 .cursor-glow.hover{{width:48px;height:48px;opacity:.6}}
 @media(max-width:768px){{.cursor-glow{{display:none}}}}
 
-/* Backgrounds */
 body::before{{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.03;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}}
 .aurora{{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}}
 .aurora-blob{{position:absolute;border-radius:50%;filter:blur(80px);opacity:.12;animation:aurora-drift 12s ease-in-out infinite alternate}}
@@ -295,7 +321,6 @@ body::before{{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;op
 @keyframes aurora-drift{{0%{{transform:translate(0,0) scale(1)}}50%{{transform:translate(40px,-30px) scale(1.1)}}100%{{transform:translate(-20px,20px) scale(.95)}}}}
 .particle-canvas{{position:fixed;inset:0;z-index:0;pointer-events:none}}
 
-/* Section themes */
 .section-dark{{background:var(--bg);color:#fff;padding:90px 0;position:relative;overflow:hidden}}
 .section-dark::before{{content:'';position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,.03) 1px,transparent 1px);background-size:32px 32px;z-index:0}}
 .section-dark::after{{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:800px;height:400px;pointer-events:none;background:radial-gradient(ellipse,var(--primary),transparent 70%);opacity:.04;z-index:0}}
@@ -314,7 +339,6 @@ body::before{{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;op
 .section-light .card{{background:rgba(255,255,255,.03);color:#fff;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(10px)}}
 .section-light .card h3{{color:#fff}}.section-light .card p{{color:rgba(255,255,255,.75)}}
 
-/* Hero */
 .hero{{min-height:100vh;display:flex;align-items:center;position:relative;overflow:hidden;background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end))}}
 .hero::before{{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(255,255,255,.15) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(255,255,255,.08) 0%,transparent 40%);opacity:.6;animation:hero-bg 10s ease-in-out infinite alternate}}
 @keyframes hero-bg{{0%{{transform:scale(1);opacity:.6}}100%{{transform:scale(1.1) translate(2%,-2%);opacity:.4}}}}
@@ -331,14 +355,12 @@ body::before{{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;op
 .hero-shape:nth-child(4){{width:100px;height:100px;bottom:30%;right:10%;animation-delay:1s}}
 @keyframes float-shape{{0%,100%{{transform:translateY(0) scale(1)}}33%{{transform:translateY(-20px) scale(1.05)}}66%{{transform:translateY(10px) scale(.95)}}}}
 
-/* Typography */
 h2{{font-size:clamp(2rem,4.5vw,3.2rem);font-weight:800;margin-bottom:16px;font-family:var(--heading-font);letter-spacing:-.02em;line-height:1.15}}
 h3{{font-size:1.3rem;font-weight:600;margin-bottom:10px;font-family:var(--heading-font)}}
 .section-header{{text-align:center;max-width:700px;margin:0 auto 48px}}
 .section-header p{{font-size:1.1rem;line-height:1.7}}
 .gradient-text{{background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}}
 
-/* Grid & Cards */
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:32px}}
 .card{{padding:36px;border-radius:var(--radius);transition:all .4s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}}
 .card::before{{content:'';position:absolute;inset:0;border-radius:inherit;opacity:0;background:linear-gradient(var(--grad-angle),var(--primary),transparent);transition:opacity .4s;z-index:0}}
@@ -347,7 +369,6 @@ h3{{font-size:1.3rem;font-weight:600;margin-bottom:10px;font-family:var(--headin
 .card>*{{position:relative;z-index:1}}
 .card i{{font-size:2.2rem;margin-bottom:18px;display:block;background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 
-/* Buttons */
 .btn{{display:inline-flex;align-items:center;gap:8px;padding:16px 36px;border-radius:8px;font-weight:600;text-decoration:none;transition:all .3s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none;font-size:1rem;font-family:var(--body-font);position:relative;overflow:hidden}}
 .btn-primary{{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:var(--text-on-primary);box-shadow:0 4px 20px rgba(0,0,0,.2)}}
 .btn-primary:hover{{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(0,0,0,.3);filter:brightness(1.1)}}
@@ -356,7 +377,6 @@ h3{{font-size:1.3rem;font-weight:600;margin-bottom:10px;font-family:var(--headin
 .btn-outline{{background:transparent;border:2px solid rgba(255,255,255,.25);color:#fff}}
 .btn-outline:hover{{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.4);transform:translateY(-3px)}}
 
-/* Images */
 img{{max-width:100%;height:auto;border-radius:var(--radius);display:block}}
 .img-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}}
 .img-grid img{{width:100%;height:250px;object-fit:cover;transition:transform .4s,filter .4s}}
@@ -374,7 +394,6 @@ img{{max-width:100%;height:auto;border-radius:var(--radius);display:block}}
 .img-overlay-wrap:hover .img-overlay{{opacity:1}}
 .img-overlay p{{color:#fff;font-weight:600}}
 
-/* Animations */
 .animate{{opacity:0;transform:translateY(40px);transition:opacity .7s cubic-bezier(.4,0,.2,1),transform .7s cubic-bezier(.4,0,.2,1)}}
 .animate.visible{{opacity:1;transform:translateY(0)}}
 .animate-left{{opacity:0;transform:translateX(-40px);transition:opacity .7s ease,transform .7s ease}}
@@ -384,9 +403,8 @@ img{{max-width:100%;height:auto;border-radius:var(--radius);display:block}}
 .animate-scale{{opacity:0;transform:scale(.9);transition:opacity .7s ease,transform .7s ease}}
 .animate-scale.visible{{opacity:1;transform:scale(1)}}
 
-/* Nav */
 header{{position:fixed;top:0;left:0;right:0;z-index:1000;padding:18px 0;background:transparent;transition:all .4s cubic-bezier(.4,0,.2,1)}}
-header.scrolled{{background:rgba({int(bg[1:3],16)},{int(bg[3:5],16)},{int(bg[5:7],16)},.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 2px 30px rgba(0,0,0,.3);padding:12px 0}}
+header.scrolled{{background:rgba({bg_rgb},.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 2px 30px rgba(0,0,0,.3);padding:12px 0}}
 nav{{display:flex;align-items:center;justify-content:space-between}}
 .logo{{font-family:var(--heading-font);font-size:1.5rem;font-weight:800;color:#fff;text-decoration:none;letter-spacing:-.02em}}
 .nav-links{{display:flex;gap:28px;list-style:none}}
@@ -397,7 +415,6 @@ nav{{display:flex;align-items:center;justify-content:space-between}}
 .hamburger{{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:8px}}
 .hamburger span{{width:24px;height:2px;background:#fff;transition:all .3s;border-radius:2px}}
 
-/* Footer */
 footer{{background:var(--bg);color:rgba(255,255,255,.7);padding:80px 0 40px}}
 footer h3{{color:#fff;margin-bottom:18px;font-size:1.1rem}}
 footer a{{color:rgba(255,255,255,.5);text-decoration:none;transition:color .3s}}
@@ -411,11 +428,10 @@ blockquote{{font-style:italic;font-size:1.1rem;line-height:1.8;margin-bottom:18p
 cite{{font-style:normal;font-weight:600;font-size:.95rem}}
 .stat-number{{font-size:clamp(2.5rem,5vw,4rem);font-weight:900;color:var(--primary);font-family:var(--heading-font);line-height:1}}
 
-/* Responsive */
 @media(max-width:768px){{
   .grid{{grid-template-columns:1fr}}
   section,.section-dark,.section-light{{padding:60px 0}}
-  .nav-links{{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba({int(bg[1:3],16)},{int(bg[3:5],16)},{int(bg[5:7],16)},.98);flex-direction:column;align-items:center;justify-content:center;gap:36px;z-index:999;backdrop-filter:blur(20px)}}
+  .nav-links{{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba({bg_rgb},.98);flex-direction:column;align-items:center;justify-content:center;gap:36px;z-index:999;backdrop-filter:blur(20px)}}
   .nav-links.active{{display:flex}}.nav-links a{{font-size:1.3rem}}
   .hamburger{{display:flex;z-index:1000}}
   .footer-grid{{grid-template-columns:1fr}}.footer-bottom{{flex-direction:column;text-align:center}}
@@ -431,7 +447,7 @@ cite{{font-style:normal;font-weight:600;font-size:.95rem}}
 <div class="scroll-progress" id="scrollProgress"></div>
 <div class="cursor-glow" id="cursorGlow"></div>
 <header><div class="container"><nav>
-<a href="#" class="logo">{title}</a>
+<a href="#" class="logo">{safe_title}</a>
 <div class="nav-links">{nav_html}</div>
 <button class="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
 </nav></div></header>
@@ -443,45 +459,27 @@ cite{{font-style:normal;font-weight:600;font-size:.95rem}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 <script>
 gsap.registerPlugin(ScrollTrigger);
-// Particles
 (function(){const c=document.getElementById("particleCanvas");if(!c)return;const x=c.getContext("2d");let p=[];const N=50;function r(){c.width=innerWidth;c.height=innerHeight}r();addEventListener("resize",r);for(let i=0;i<N;i++)p.push({x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,s:Math.random()*2+.5,o:Math.random()*.4+.1});function d(){x.clearRect(0,0,c.width,c.height);const cl=getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()||"#6c5ce7";p.forEach((a,i)=>{a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>c.width)a.vx*=-1;if(a.y<0||a.y>c.height)a.vy*=-1;x.beginPath();x.arc(a.x,a.y,a.s,0,Math.PI*2);x.fillStyle=cl;x.globalAlpha=a.o;x.fill();for(let j=i+1;j<p.length;j++){const dx=a.x-p[j].x,dy=a.y-p[j].y,dt=Math.sqrt(dx*dx+dy*dy);if(dt<120){x.beginPath();x.moveTo(a.x,a.y);x.lineTo(p[j].x,p[j].y);x.strokeStyle=cl;x.globalAlpha=(1-dt/120)*.08;x.lineWidth=.5;x.stroke()}}});x.globalAlpha=1;requestAnimationFrame(d)}d()})();
-// Loader
 addEventListener("load",()=>{setTimeout(()=>{document.getElementById("pageLoader").classList.add("hidden");gsap.from(".hero h1",{y:60,opacity:0,duration:1,delay:.2,ease:"power3.out"});gsap.from(".hero p",{y:40,opacity:0,duration:.8,delay:.5,ease:"power3.out"});gsap.from(".hero .btn",{y:30,opacity:0,duration:.6,delay:.8,stagger:.15,ease:"power3.out"})},300)});
-// Scroll progress
 addEventListener("scroll",()=>{document.getElementById("scrollProgress").style.width=Math.min(scrollY/(document.documentElement.scrollHeight-innerHeight)*100,100)+"%"});
-// Cursor
 const cg=document.getElementById("cursorGlow");let mx=0,my=0,cx=0,cy=0;document.addEventListener("mousemove",e=>{mx=e.clientX;my=e.clientY});(function ac(){cx+=(mx-cx)*.15;cy+=(my-cy)*.15;cg.style.left=cx+"px";cg.style.top=cy+"px";requestAnimationFrame(ac)})();document.querySelectorAll("a,.btn,.card").forEach(e=>{e.addEventListener("mouseenter",()=>cg.classList.add("hover"));e.addEventListener("mouseleave",()=>cg.classList.remove("hover"))});
-// Scroll reveal
 const obs=new IntersectionObserver(e=>{e.forEach(t=>{if(t.isIntersecting){t.target.classList.add("visible");obs.unobserve(t.target)}})},{threshold:.1,rootMargin:"0px 0px -60px 0px"});document.querySelectorAll(".animate,.animate-left,.animate-right,.animate-scale").forEach(e=>obs.observe(e));
-// GSAP headings
 gsap.utils.toArray("section h2,.section-dark h2,.section-light h2").forEach(h=>{gsap.from(h,{y:60,opacity:0,duration:.9,ease:"power3.out",scrollTrigger:{trigger:h,start:"top 85%"}})});
-// Card stagger
 gsap.utils.toArray(".grid").forEach(g=>{const c=g.querySelectorAll(".card");if(c.length)gsap.from(c,{y:80,opacity:0,duration:.7,stagger:.12,ease:"power3.out",scrollTrigger:{trigger:g,start:"top 82%"}})});
-// Hero parallax
 if(document.querySelector(".hero")){gsap.to(".hero",{yPercent:-20,ease:"none",scrollTrigger:{trigger:".hero",scrub:1.5}})}
-// Sticky nav
 addEventListener("scroll",()=>{const h=document.querySelector("header");if(h)h.classList.toggle("scrolled",scrollY>80)});
-// Mobile menu
 const hb=document.querySelector(".hamburger"),nl=document.querySelector(".nav-links");if(hb&&nl)hb.addEventListener("click",()=>{nl.classList.toggle("active");hb.classList.toggle("active")});
-// Smooth scroll
 document.querySelectorAll('a[href^="#"]').forEach(a=>{a.addEventListener("click",e=>{e.preventDefault();const t=document.querySelector(a.getAttribute("href"));if(t)t.scrollIntoView({behavior:"smooth"});if(nl)nl.classList.remove("active")})});
-// 3D card tilt
 document.querySelectorAll(".card").forEach(c=>{c.addEventListener("mousemove",e=>{const r=c.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;c.style.transform=`perspective(1000px) rotateY(${x*12}deg) rotateX(${y*-12}deg) translateY(-12px) scale(1.02)`;c.style.transition="transform .1s"});c.addEventListener("mouseleave",()=>{c.style.transform="";c.style.transition="transform .5s cubic-bezier(.4,0,.2,1)"})});
-// Magnetic buttons
 document.querySelectorAll(".btn").forEach(b=>{b.addEventListener("mousemove",e=>{const r=b.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2;b.style.transform=`translate(${x*.25}px,${y*.25}px) scale(1.04)`});b.addEventListener("mouseleave",()=>{b.style.transform=""})});
-// Counter animation
 document.querySelectorAll(".stat-number").forEach(el=>{const o=new IntersectionObserver(e=>{if(e[0].isIntersecting){const t=el.textContent,m=t.match(/([\\d,]+)/);if(m){const tgt=parseInt(m[1].replace(/,/g,"")),sfx=t.replace(m[1],"").trim(),pfx=t.substring(0,t.indexOf(m[1]));let s=performance.now();(function step(n){const p=Math.min((n-s)/2000,1),v=Math.floor(tgt*(1-Math.pow(1-p,3)));el.textContent=pfx+v.toLocaleString()+sfx;if(p<1)requestAnimationFrame(step)})(s)}o.unobserve(el)}},{threshold:.5});o.observe(el)});
-// Image reveal
 gsap.utils.toArray("img").forEach(i=>{gsap.from(i,{clipPath:"inset(0 100% 0 0)",duration:1.2,ease:"power4.out",scrollTrigger:{trigger:i,start:"top 85%"}})});
-// Aurora mouse
 const blobs=document.querySelectorAll(".aurora-blob");document.addEventListener("mousemove",e=>{const x=(e.clientX/innerWidth-.5)*30,y=(e.clientY/innerHeight-.5)*30;blobs.forEach((b,i)=>{b.style.transform=`translate(${x*(i+1)*.5}px,${y*(i+1)*.5}px)`})});
-// Hero text reveal
 const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){const w=hh.textContent.split(" ");hh.innerHTML=w.map(s=>`<span style="display:inline-block;margin-right:.3em">${s}</span>`).join("");gsap.from(hh.querySelectorAll("span"),{y:40,opacity:0,rotationX:-40,duration:.8,stagger:.08,ease:"back.out(1.5)",delay:.4})}
 </script>
 </body>
 </html>'''
 
-    # ── Build section spec for the single API call ──
     sections_spec = []
     for i, section in enumerate(sections):
         stype = section.get("type", "content")
@@ -586,11 +584,6 @@ def health():
     return jsonify({"status": "ok", "service": "echo-websites"})
 
 
-import uuid
-
-jobs = {}
-
-
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()
@@ -599,12 +592,33 @@ def generate():
     if not data.get("prompt") and not data.get("business_name") and not data.get("website_type"):
         return jsonify({"error": "Please provide a description, business name, or website type"}), 400
 
-    enhanced_prompt = build_enhanced_prompt(data)
     user_images = data.get("images", [])
+    if user_images:
+        validated = []
+        for img in user_images:
+            if isinstance(img, str) and img.startswith("data:image/") and len(img) <= MAX_IMAGE_SIZE:
+                validated.append(img)
+        user_images = validated[:8]
+
+    cleanup_stale_jobs()
+
+    with jobs_lock:
+        active = sum(1 for j in jobs.values() if j["status"] in ("planning", "building"))
+        if active >= MAX_CONCURRENT_JOBS:
+            return jsonify({"error": "Server is busy. Please try again in a minute."}), 429
+
+    enhanced_prompt = build_enhanced_prompt(data)
     job_id = str(uuid.uuid4())
 
-    job = {"status": "planning", "message": "Planning intent, structure & design...", "html": None, "error": None}
-    jobs[job_id] = job
+    job = {
+        "status": "planning",
+        "message": "Planning intent, structure & design...",
+        "html": None,
+        "error": None,
+        "created_at": time.time(),
+    }
+    with jobs_lock:
+        jobs[job_id] = job
 
     def run():
         try:
@@ -613,13 +627,13 @@ def generate():
             job["status"] = "building"
             job["message"] = f"Building {section_count} sections with 3D effects..."
 
-            html = agent_component_builder(intent, architecture, design, enhanced_prompt)
+            result_html = agent_component_builder(intent, architecture, design, enhanced_prompt)
             if user_images:
-                html = inject_user_images(html, user_images)
+                result_html = inject_user_images(result_html, user_images)
 
             job["status"] = "complete"
             job["message"] = "Done"
-            job["html"] = html
+            job["html"] = result_html
         except Exception as e:
             job["status"] = "error"
             job["message"] = str(e)
@@ -630,15 +644,18 @@ def generate():
 
 @app.route("/status/<job_id>", methods=["GET"])
 def job_status(job_id):
-    job = jobs.get(job_id)
+    with jobs_lock:
+        job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     resp = {"status": job["status"], "message": job["message"]}
     if job["status"] == "complete":
         resp["html"] = job["html"]
-        del jobs[job_id]
+        with jobs_lock:
+            jobs.pop(job_id, None)
     elif job["status"] == "error":
-        del jobs[job_id]
+        with jobs_lock:
+            jobs.pop(job_id, None)
     return jsonify(resp)
 
 
