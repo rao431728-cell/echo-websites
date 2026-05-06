@@ -628,23 +628,16 @@ async function generate() {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
+      for (const part of parts) {
+        const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+        if (!dataLine) continue;
         try {
-          handleEvent(JSON.parse(line));
+          handleEvent(JSON.parse(dataLine.slice(6)));
         } catch (e) {
-          console.warn('Failed to parse stream event:', line, e);
+          console.warn('Failed to parse SSE event:', dataLine, e);
         }
-      }
-    }
-
-    if (buffer.trim()) {
-      try {
-        handleEvent(JSON.parse(buffer.trim()));
-      } catch (e) {
-        console.warn('Failed to parse final stream event:', buffer, e);
       }
     }
   } catch(err) {
@@ -670,6 +663,7 @@ function handleEvent(event) {
     alert('Error: ' + message);
     return;
   }
+  if (stage === 'ping') return;
   if (stage === 'complete') {
     generatedHTML = html;
     showPreview(html);

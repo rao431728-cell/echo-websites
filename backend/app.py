@@ -578,33 +578,32 @@ def generate():
     enhanced_prompt = build_enhanced_prompt(data)
     user_images = data.get("images", [])
 
+    def sse(data):
+        return f"data: {json.dumps(data)}\n\n"
+
     def stream():
         try:
-            yield json.dumps({"stage": "plan", "message": "Planning intent, structure & design..."}) + "\n"
-            # Run planning in a worker thread and emit periodic heartbeat
-            # events to avoid proxy idle timeouts during long model calls.
+            yield sse({"stage": "plan", "message": "Planning intent, structure & design..."})
+
             plan_result = {"intent": None, "architecture": None, "design": None, "error": None}
             plan_done = threading.Event()
 
             def _plan_worker():
                 try:
-                    intent, architecture, design = agent_plan(enhanced_prompt)
-                    plan_result["intent"] = intent
-                    plan_result["architecture"] = architecture
-                    plan_result["design"] = design
+                    i, a, d = agent_plan(enhanced_prompt)
+                    plan_result["intent"] = i
+                    plan_result["architecture"] = a
+                    plan_result["design"] = d
                 except Exception as e:
                     plan_result["error"] = e
                 finally:
                     plan_done.set()
 
             threading.Thread(target=_plan_worker, daemon=True).start()
-            plan_heartbeat_seconds = 0
+            elapsed = 0
             while not plan_done.wait(timeout=10):
-                plan_heartbeat_seconds += 10
-                yield json.dumps({
-                    "stage": "plan",
-                    "message": f"Still planning architecture and design... ({plan_heartbeat_seconds}s)"
-                }) + "\n"
+                elapsed += 10
+                yield sse({"stage": "ping", "message": f"Planning... ({elapsed}s)"})
 
             if plan_result["error"] is not None:
                 raise plan_result["error"]
@@ -613,11 +612,10 @@ def generate():
             architecture = plan_result["architecture"] or {}
             design = plan_result["design"] or {}
             section_count = len(architecture.get("sections", []))
-            yield json.dumps({"stage": "plan_done", "message": f"{intent.get('website_type', 'custom')} — {section_count} sections planned"}) + "\n"
+            yield sse({"stage": "plan_done", "message": f"{intent.get('website_type', 'custom')} — {section_count} sections planned"})
 
-            yield json.dumps({"stage": "build", "message": f"Building {section_count} sections with 3D effects..."}) + "\n"
-            # Run the long build in a worker thread and emit periodic heartbeat
-            # events so proxies (e.g. Railway) keep the stream connection alive.
+            yield sse({"stage": "build", "message": f"Building {section_count} sections with 3D effects..."})
+
             build_result = {"html": None, "error": None}
             build_done = threading.Event()
 
@@ -630,32 +628,33 @@ def generate():
                     build_done.set()
 
             threading.Thread(target=_build_worker, daemon=True).start()
-            heartbeat_seconds = 0
+            elapsed = 0
             while not build_done.wait(timeout=10):
-                heartbeat_seconds += 10
-                yield json.dumps({
-                    "stage": "build",
-                    "message": f"Still building interactive sections... ({heartbeat_seconds}s)"
-                }) + "\n"
+                elapsed += 10
+                yield sse({"stage": "ping", "message": f"Building sections... ({elapsed}s)"})
 
             if build_result["error"] is not None:
                 raise build_result["error"]
 
             html = build_result["html"] or ""
-            yield json.dumps({"stage": "build_done", "message": f"Built {section_count} interactive sections"}) + "\n"
+            yield sse({"stage": "build_done", "message": f"Built {section_count} interactive sections"})
 
             if user_images:
                 html = inject_user_images(html, user_images)
 
-            yield json.dumps({"stage": "complete", "html": html}) + "\n"
+            yield sse({"stage": "complete", "html": html})
 
         except Exception as e:
-            yield json.dumps({"stage": "error", "message": str(e)}) + "\n"
+            yield sse({"stage": "error", "message": str(e)})
 
     return Response(
         stream_with_context(stream()),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 
