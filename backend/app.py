@@ -246,7 +246,7 @@ def agent_plan(user_prompt):
 
 # ─── CALL 2: Component Builder (streamed, single call for all sections) ───────
 
-def agent_component_builder(intent, architecture, design, user_description=""):
+def agent_component_builder(intent, architecture, design, user_description="", user_images=None):
     sections = architecture.get("sections", [])
     title = architecture.get("title", "Website")
     safe_title = html_mod.escape(title)
@@ -447,6 +447,28 @@ cite{{font-style:normal;font-weight:600;font-size:.95rem}}
   .hero h1{{font-size:clamp(2rem,8vw,3.5rem)}}
 }}
 @media(prefers-reduced-motion:reduce){{.animate,.animate-left,.animate-right,.animate-scale{{opacity:1;transform:none;transition:none}}.hero-shape{{animation:none}}.cursor-glow{{display:none}}}}
+
+.visual-block{{position:relative;min-height:300px;border-radius:var(--radius);overflow:hidden;display:flex;align-items:center;justify-content:center}}
+.visual-block.gradient-mesh{{background:linear-gradient(var(--grad-angle),var(--primary),var(--secondary),var(--grad-end));opacity:.9}}
+.visual-block.glass{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(20px)}}
+.float-icon{{font-size:3rem;position:absolute;opacity:.12;animation:float-shape 8s ease-in-out infinite}}
+.float-icon:nth-child(1){{top:15%;left:10%;animation-delay:0s}}.float-icon:nth-child(2){{top:60%;right:15%;animation-delay:2s}}
+.float-icon:nth-child(3){{bottom:10%;left:30%;animation-delay:4s}}.float-icon:nth-child(4){{top:30%;right:30%;animation-delay:1s}}
+.icon-showcase{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:24px;text-align:center}}
+.icon-showcase-item{{padding:32px 16px;border-radius:var(--radius);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);transition:all .4s}}
+.icon-showcase-item:hover{{background:rgba(255,255,255,.06);transform:translateY(-8px)}}
+.icon-showcase-item i{{font-size:2.5rem;margin-bottom:12px;display:block;background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.icon-showcase-item span{{font-size:.85rem;font-weight:500;color:var(--text-sec)}}
+.gradient-card{{background:linear-gradient(var(--grad-angle),rgba(var(--primary),0.08),rgba(var(--secondary),0.05));border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:36px}}
+.feature-row{{display:flex;align-items:center;gap:20px;padding:20px 0;border-bottom:1px solid rgba(255,255,255,.06)}}
+.feature-row:last-child{{border-bottom:none}}
+.feature-row i{{font-size:1.6rem;flex-shrink:0;width:50px;height:50px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--accent-surface,rgba(124,92,252,.08));color:var(--primary)}}
+.process-step{{display:flex;gap:24px;align-items:flex-start;padding:28px 0;position:relative}}
+.process-step::before{{content:'';position:absolute;left:24px;top:60px;bottom:0;width:2px;background:linear-gradient(to bottom,var(--primary),transparent)}}
+.process-step:last-child::before{{display:none}}
+.step-number{{width:48px;height:48px;border-radius:50%;background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0}}
+.user-img{{width:100%;height:350px;object-fit:cover;border-radius:var(--radius);border:1px solid rgba(255,255,255,.08)}}
+.img-full{{width:100%;height:400px;object-fit:cover;border-radius:var(--radius)}}
 </style>
 </head>
 <body>
@@ -506,37 +528,79 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
             "purpose": section.get("purpose", ""),
         })
 
+    has_user_images = bool(user_images)
+    num_user_images = len(user_images) if user_images else 0
+
+    if has_user_images:
+        image_instructions = (
+            f"\n\nIMAGE RULES — USER HAS PROVIDED {num_user_images} IMAGES:\n"
+            "- The user uploaded their own images. Use <img> tags with src='https://picsum.photos/seed/KEYWORD/800/600' as placeholders.\n"
+            "  These will be replaced with the user's actual images automatically.\n"
+            f"- Place EXACTLY {num_user_images} <img> tags across the most visual sections (hero, about, gallery, portfolio, etc.).\n"
+            "- Give images the class 'user-img' for proper styling: <img class='user-img' src='https://picsum.photos/seed/KEYWORD/800/600' loading='lazy' alt='...'>\n"
+            "- Use unique KEYWORD seeds per image so they map correctly.\n"
+            "- Make images prominent — full-width or in two-col layouts, NOT tiny thumbnails.\n"
+        )
+    else:
+        image_instructions = (
+            "\n\nIMAGE RULES — NO USER IMAGES (use CSS visuals instead):\n"
+            "- Do NOT use <img> tags or picsum.photos or unsplash URLs anywhere. No stock photos.\n"
+            "- Instead, create rich visual interest using these CSS-only techniques:\n"
+            "  * Icon showcases: <div class='icon-showcase'><div class='icon-showcase-item'><i class='fas fa-icon'></i><span>Label</span></div>...</div>\n"
+            "  * Gradient visual blocks: <div class='visual-block gradient-mesh'><floating icons inside></div>\n"
+            "  * Glass panels: <div class='visual-block glass'>content</div>\n"
+            "  * Feature rows with icons: <div class='feature-row'><i class='fas fa-icon'></i><div><h3>Title</h3><p>Text</p></div></div>\n"
+            "  * Process steps: <div class='process-step'><div class='step-number'>1</div><div><h3>Step title</h3><p>Description</p></div></div>\n"
+            "  * Cards with large icons and detailed descriptions\n"
+            "  * Stats sections with animated numbers\n"
+            "  * Testimonials with avatar initials (use a styled div instead of img)\n"
+            "- For the hero, use bold typography + animated hero-shapes + gradient background. NO hero image.\n"
+            "- For about/gallery sections, use icon-showcase grids or two-col layouts with visual-block + text.\n"
+            "- Every section must be visually rich despite having no photos.\n"
+        )
+
     system_build = (
-        "You are an expert frontend developer. Generate ALL section HTML for a complete website.\n"
-        "Output ONLY raw HTML — no markdown fences, no doctype/head/style/script.\n\n"
-        "CRITICAL: Every heading, paragraph, button label, testimonial, stat, and piece of copy "
+        "You are a world-class frontend developer building a premium website.\n"
+        "Output ONLY raw HTML — no markdown fences, no doctype/head/style/script tags.\n\n"
+
+        "CRITICAL — BUSINESS-SPECIFIC CONTENT:\n"
+        "Every heading, paragraph, button label, testimonial, stat, feature name, and piece of copy "
         "must be SPECIFIC to this exact business. Use the business name, industry, audience, "
-        "and key features provided. NEVER write generic placeholder text like 'Welcome to our website' "
-        "or 'We provide quality services'. Instead write copy that could ONLY belong to this business.\n\n"
-        "AVAILABLE CSS CLASSES (already defined — just use them):\n"
+        "and key features. NEVER write generic text like 'Welcome to our website', "
+        "'We provide quality services', 'Lorem ipsum', or 'Your success is our priority'. "
+        "Write copy that could ONLY belong to THIS business.\n\n"
+
+        "CRITICAL — NO EMPTY SPACE:\n"
+        "- Every section must be PACKED with content. No thin sections with just a heading and one paragraph.\n"
+        "- Hero: h1 (compelling headline) + p (2-3 sentences) + 2 buttons + hero-shapes div. Fill the viewport.\n"
+        "- Feature/services sections: minimum 4-6 cards, each with icon + h3 + 2-3 sentence description.\n"
+        "- About sections: use two-col layout. One side: 3+ paragraphs of real content. Other side: visual element or feature list.\n"
+        "- Stats: 4-6 impressive numbers with labels.\n"
+        "- Testimonials: 3 detailed testimonials with full quotes (2-3 sentences each), names, and roles.\n"
+        "- Footer: 4-column footer-grid with real links/content + footer-bottom with social-links.\n"
+        "- Add badge elements, sub-headings, and secondary text to fill space.\n"
+        "- If a section looks like it could be taller, add more content.\n\n"
+
+        "AVAILABLE CSS CLASSES (already defined):\n"
         "Layout: container, grid, two-col, section-header, img-grid\n"
         "Cards: card animate (with i.fas.fa-icon, h3, p inside)\n"
         "Buttons: btn btn-primary, btn btn-outline\n"
         "Text: gradient-text, badge, stat-number\n"
         "Animation: animate, animate-left, animate-right, animate-scale\n"
-        "Images: avatar, img-overlay-wrap + img-overlay\n"
+        "Visual: visual-block, visual-block gradient-mesh, visual-block glass, icon-showcase, icon-showcase-item\n"
+        "Features: feature-row (with i + div>h3+p), process-step (with step-number + div>h3+p)\n"
+        "Images: user-img, img-full, avatar, img-overlay-wrap + img-overlay\n"
         "Testimonials: blockquote > p, cite, testimonial-author\n"
         "Footer: footer-grid, footer-bottom, social-links\n\n"
-        "RULES:\n"
+
+        "STRUCTURE RULES:\n"
         "- Each section: <section id=\"ID\" class=\"CLASS\"><div class=\"container\">...</div></section>\n"
         "- Footer: <footer class=\"section-dark\"><div class=\"container\">...</div></footer>\n"
         "- Hero: h1 + p + buttons. Add <div class='hero-shapes'><div class='hero-shape'></div><div class='hero-shape'></div><div class='hero-shape'></div><div class='hero-shape'></div></div>\n"
         "- Non-hero sections: start with <div class='section-header animate'><h2 class='gradient-text'>headline</h2><p>subtitle</p></div>\n"
-        "- Use Font Awesome 6: <i class='fas fa-icon-name'></i>\n"
-        "- Images: <img src='https://picsum.photos/seed/KEYWORD/800/600' loading='lazy' alt='...'>\n"
-        "- Include images in hero, about, gallery, and other visual sections\n"
-        "- Cards: 4-6 per grid with icon + h3 + 2-sentence p\n"
-        "- Testimonials: 3 cards with blockquote + cite + avatar\n"
-        "- Stats: 4 cards with stat-number + label\n"
-        "- Footer: 4-col footer-grid + footer-bottom with social-links (fa-brands icons)\n"
-        "- Write efficient HTML — use the classes above, avoid inline styles when a class works\n"
-        "- Be DENSE — no empty space, fill every section with rich content\n"
+        "- Use Font Awesome 6: <i class='fas fa-icon-name'></i> or <i class='fab fa-brand'></i>\n"
         "- Write ALL sections listed below, in order, one after another\n"
+        + image_instructions
     )
 
     builder_data = {
@@ -551,6 +615,8 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
         "design_inspiration": intent.get("design_inspiration", ""),
         "emotional_response": intent.get("emotional_response", ""),
         "style_notes": design.get("style_notes", ""),
+        "has_user_images": has_user_images,
+        "num_user_images": num_user_images,
         "sections": sections_spec,
     }
     user_prompt = json.dumps(builder_data)
@@ -636,7 +702,7 @@ def generate():
             job["status"] = "building"
             job["message"] = f"Building {section_count} sections with 3D effects..."
 
-            result_html = agent_component_builder(intent, architecture, design, enhanced_prompt)
+            result_html = agent_component_builder(intent, architecture, design, enhanced_prompt, user_images)
             if user_images:
                 result_html = inject_user_images(result_html, user_images)
 
