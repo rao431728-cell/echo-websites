@@ -469,6 +469,47 @@ cite{{font-style:normal;font-weight:600;font-size:.95rem}}
 .step-number{{width:48px;height:48px;border-radius:50%;background:linear-gradient(var(--grad-angle),var(--grad-start),var(--grad-end));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0}}
 .user-img{{width:100%;height:350px;object-fit:cover;border-radius:var(--radius);border:1px solid rgba(255,255,255,.08)}}
 .img-full{{width:100%;height:400px;object-fit:cover;border-radius:var(--radius)}}
+
+.tilt-3d{{transform-style:preserve-3d;perspective:1200px}}
+.tilt-3d>*{{transform:translateZ(0);transition:transform .6s cubic-bezier(.4,0,.2,1)}}
+.tilt-3d:hover>*{{transform:translateZ(30px)}}
+
+.card-3d{{transform-style:preserve-3d;perspective:800px;position:relative}}
+.card-3d .card-face{{backface-visibility:hidden;transition:transform .7s cubic-bezier(.4,0,.2,1)}}
+.card-3d .card-inner{{position:relative;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.4,0,.2,1)}}
+
+.depth-section{{transform-style:preserve-3d;perspective:1500px}}
+.depth-layer{{transform:translateZ(0);transition:transform .4s ease}}
+.depth-layer-1{{transform:translateZ(20px)}}
+.depth-layer-2{{transform:translateZ(40px)}}
+.depth-layer-3{{transform:translateZ(60px)}}
+
+.glow-line{{height:1px;background:linear-gradient(90deg,transparent,var(--primary),var(--grad-end),transparent);margin:0 auto;opacity:.5}}
+.glow-orb{{position:absolute;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,var(--primary),transparent 70%);opacity:.06;filter:blur(40px);pointer-events:none;animation:orb-float 10s ease-in-out infinite alternate}}
+@keyframes orb-float{{0%{{transform:translate(0,0) scale(1)}}50%{{transform:translate(30px,-40px) scale(1.2)}}100%{{transform:translate(-20px,30px) scale(.9)}}}}
+
+.morph-bg{{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}}
+.morph-shape{{position:absolute;border-radius:30% 70% 70% 30% / 30% 30% 70% 70%;opacity:.06;animation:morph 15s ease-in-out infinite alternate}}
+.morph-shape:nth-child(1){{width:500px;height:500px;top:-100px;right:-100px;background:var(--primary);animation-duration:12s}}
+.morph-shape:nth-child(2){{width:400px;height:400px;bottom:-100px;left:-50px;background:var(--grad-end);animation-delay:4s;animation-duration:18s}}
+@keyframes morph{{0%{{border-radius:30% 70% 70% 30% / 30% 30% 70% 70%}}25%{{border-radius:58% 42% 75% 25% / 76% 46% 54% 24%}}50%{{border-radius:50% 50% 33% 67% / 55% 27% 73% 45%}}75%{{border-radius:33% 67% 58% 42% / 63% 68% 32% 37%}}100%{{border-radius:70% 30% 30% 70% / 70% 70% 30% 30%}}}}
+
+.parallax-wrap{{position:relative;overflow:hidden}}
+.parallax-bg{{position:absolute;inset:-20%;z-index:0;pointer-events:none;background:linear-gradient(var(--grad-angle),rgba(255,255,255,.02),transparent);transition:transform .1s linear}}
+
+.text-glow{{text-shadow:0 0 40px rgba(255,255,255,.1),0 0 80px var(--primary)}}
+.icon-float{{animation:icon-bob 3s ease-in-out infinite}}
+@keyframes icon-bob{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-8px)}}}}
+.hover-lift{{transition:all .4s cubic-bezier(.4,0,.2,1)}}
+.hover-lift:hover{{transform:translateY(-16px) scale(1.03);box-shadow:0 20px 60px rgba(0,0,0,.3),0 0 40px rgba(124,92,252,.1)}}
+
+.glass-card{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:var(--radius);padding:36px;position:relative;overflow:hidden}}
+.glass-card::before{{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent)}}
+
+.reveal-up{{clip-path:inset(100% 0 0 0);transition:clip-path .8s cubic-bezier(.4,0,.2,1)}}
+.reveal-up.visible{{clip-path:inset(0 0 0 0)}}
+.stagger-fade>*{{opacity:0;transform:translateY(30px)}}
+.stagger-fade.visible>*{{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
@@ -507,6 +548,14 @@ document.querySelectorAll(".stat-number").forEach(el=>{const o=new IntersectionO
 gsap.utils.toArray("img").forEach(i=>{gsap.from(i,{clipPath:"inset(0 100% 0 0)",duration:1.2,ease:"power4.out",scrollTrigger:{trigger:i,start:"top 85%"}})});
 const blobs=document.querySelectorAll(".aurora-blob");document.addEventListener("mousemove",e=>{const x=(e.clientX/innerWidth-.5)*30,y=(e.clientY/innerHeight-.5)*30;blobs.forEach((b,i)=>{b.style.transform=`translate(${x*(i+1)*.5}px,${y*(i+1)*.5}px)`})});
 const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){const w=hh.textContent.split(" ");hh.innerHTML=w.map(s=>`<span style="display:inline-block;margin-right:.3em">${s}</span>`).join("");gsap.from(hh.querySelectorAll("span"),{y:40,opacity:0,rotationX:-40,duration:.8,stagger:.08,ease:"back.out(1.5)",delay:.4})}
+document.querySelectorAll("section,footer").forEach(s=>{gsap.fromTo(s,{y:60,rotationX:2,transformPerspective:1200,transformOrigin:"center top"},{y:0,rotationX:0,duration:1.2,ease:"power3.out",scrollTrigger:{trigger:s,start:"top 90%",end:"top 40%",scrub:.8}})});
+document.querySelectorAll(".glass-card,.icon-showcase-item,.feature-row").forEach(el=>{el.addEventListener("mousemove",e=>{const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.style.transform=`perspective(600px) rotateY(${x*8}deg) rotateX(${y*-8}deg) translateZ(10px)`;el.style.transition="transform .1s"});el.addEventListener("mouseleave",()=>{el.style.transform="";el.style.transition="transform .5s cubic-bezier(.4,0,.2,1)"})});
+document.querySelectorAll(".reveal-up").forEach(el=>{const ro=new IntersectionObserver(e=>{if(e[0].isIntersecting){el.classList.add("visible");ro.unobserve(el)}},{threshold:.15});ro.observe(el)});
+document.querySelectorAll(".stagger-fade").forEach(el=>{const ro=new IntersectionObserver(e=>{if(e[0].isIntersecting){el.classList.add("visible");[...el.children].forEach((c,i)=>{c.style.transition=`opacity .6s ${i*.1}s, transform .6s ${i*.1}s`;c.style.transitionTimingFunction="cubic-bezier(.4,0,.2,1)"});ro.unobserve(el)}},{threshold:.1});ro.observe(el)});
+document.querySelectorAll(".morph-bg").forEach(mb=>{gsap.to(mb.querySelectorAll(".morph-shape"),{rotation:360,duration:30,ease:"none",repeat:-1})});
+gsap.utils.toArray(".glow-line").forEach(gl=>{gsap.fromTo(gl,{width:"0%"},{width:"80%",duration:1.5,ease:"power2.out",scrollTrigger:{trigger:gl,start:"top 85%"}})});
+if(document.querySelector(".hero")){const hs=document.querySelectorAll(".hero-shape");hs.forEach((s,i)=>{gsap.to(s,{y:()=>(i%2===0?-1:1)*60,rotation:90,ease:"none",scrollTrigger:{trigger:".hero",start:"top top",end:"bottom top",scrub:1.5+i*.3}})});gsap.to(".hero .container",{y:-40,opacity:.6,ease:"none",scrollTrigger:{trigger:".hero",start:"center center",end:"bottom top",scrub:1}})}
+document.querySelectorAll(".icon-float").forEach(el=>{el.style.animationDelay=Math.random()*2+"s"});
 </script>
 </body>
 </html>'''
@@ -588,6 +637,12 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
         "Text: gradient-text, badge, stat-number\n"
         "Animation: animate, animate-left, animate-right, animate-scale\n"
         "Visual: visual-block, visual-block gradient-mesh, visual-block glass, icon-showcase, icon-showcase-item\n"
+        "3D/Immersive: glass-card (glassmorphism with top shine), hover-lift (deep hover effect), icon-float (bobbing animation),\n"
+        "  tilt-3d (perspective parent, children pop out on hover), depth-section (3D perspective container),\n"
+        "  depth-layer-1/2/3 (z-offset layers for parallax depth), reveal-up (clip-path reveal on scroll),\n"
+        "  stagger-fade (children fade in one by one), text-glow (glowing text effect),\n"
+        "  glow-line (animated gradient divider between sections), glow-orb (floating ambient light),\n"
+        "  morph-bg (organic morphing background shapes — add <div class='morph-bg'><div class='morph-shape'></div><div class='morph-shape'></div></div>)\n"
         "Features: feature-row (with i + div>h3+p), process-step (with step-number + div>h3+p)\n"
         "Images: user-img, img-full, avatar, img-overlay-wrap + img-overlay\n"
         "Testimonials: blockquote > p, cite, testimonial-author\n"
@@ -599,6 +654,17 @@ const hh=document.querySelector(".hero h1");if(hh&&hh.textContent.length<80){con
         "- Hero: h1 + p + buttons. Add <div class='hero-shapes'><div class='hero-shape'></div><div class='hero-shape'></div><div class='hero-shape'></div><div class='hero-shape'></div></div>\n"
         "- Non-hero sections: start with <div class='section-header animate'><h2 class='gradient-text'>headline</h2><p>subtitle</p></div>\n"
         "- Use Font Awesome 6: <i class='fas fa-icon-name'></i> or <i class='fab fa-brand'></i>\n"
+        "- USE 3D EFFECTS HEAVILY throughout the site:\n"
+        "  * Wrap card grids in <div class='stagger-fade'> so cards animate in one by one\n"
+        "  * Use glass-card instead of plain card for key sections (about, pricing, features)\n"
+        "  * Add glow-line dividers: <div class='glow-line' style='max-width:200px'></div> between section header and content\n"
+        "  * Add morph-bg to at least 2 sections: <div class='morph-bg'><div class='morph-shape'></div><div class='morph-shape'></div></div> as first child inside the section\n"
+        "  * Use reveal-up on images and visual blocks\n"
+        "  * Add icon-float class to feature/service icons: <i class='fas fa-icon icon-float'></i>\n"
+        "  * Use hover-lift on cards for deep 3D hover: class='card hover-lift animate'\n"
+        "  * Use text-glow on hero h1 or key headings for ambient glow\n"
+        "  * Add glow-orb elements inside sections for ambient lighting: <div class='glow-orb' style='top:20%;left:10%'></div>\n"
+        "  * Use tilt-3d as a wrapper around two-col layouts for perspective depth\n"
         "- Write ALL sections listed below, in order, one after another\n"
         + image_instructions
     )
