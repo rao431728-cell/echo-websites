@@ -16,6 +16,7 @@ CORS(app)
 client = anthropic.Anthropic()
 MODEL_PLAN = "claude-sonnet-4-6"
 MODEL_BUILD = "claude-opus-4-6"
+MODEL_REFINE = "claude-sonnet-4-20250514"
 
 MAX_CONCURRENT_JOBS = 10
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
@@ -51,8 +52,9 @@ def call_claude_thinking(system_prompt, user_prompt, model=MODEL_PLAN, budget_to
     return ""
 
 
-def call_claude_stream(system_prompt, user_prompt, model=MODEL_BUILD, max_tokens=8000):
+def call_claude_stream(system_prompt, user_prompt, model=MODEL_BUILD, max_tokens=8000, on_progress=None):
     chunks = []
+    char_count = 0
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
@@ -61,6 +63,10 @@ def call_claude_stream(system_prompt, user_prompt, model=MODEL_BUILD, max_tokens
     ) as stream:
         for text in stream.text_stream:
             chunks.append(text)
+            char_count += len(text)
+            if on_progress and char_count % 2000 < len(text):
+                sections_done = "".join(chunks).count("</section>") + "".join(chunks).count("</footer>")
+                on_progress(sections_done, char_count)
     return "".join(chunks)
 
 
@@ -187,7 +193,7 @@ def agent_plan(user_prompt):
         '=== "architecture" ===\n'
         '- "title": string (business name or memorable title)\n'
         '- "nav_items": list of 4-6 short strings\n'
-        '- "sections": list of 7-10 objects, each with:\n'
+        '- "sections": list of 7-8 objects (NO MORE than 8), each with:\n'
         '  "id" (html id), "type" (hero/about/gallery/services/testimonials/contact/footer/features/pricing/cta/stats/faq/team/portfolio/process/menu/case-studies),\n'
         '  "purpose", "layout" (e.g. "3-card grid", "2-col image+text"), "content_hints", "visual_effect"\n'
         "Hero first, footer last. Sections specific to the business type.\n\n"
@@ -246,8 +252,8 @@ def agent_plan(user_prompt):
 
 # ─── CALL 2: Component Builder (streamed, single call for all sections) ───────
 
-def agent_component_builder(intent, architecture, design, user_description="", user_images=None):
-    sections = architecture.get("sections", [])
+def agent_component_builder(intent, architecture, design, user_description="", user_images=None, on_progress=None):
+    sections = architecture.get("sections", [])[:8]
     title = architecture.get("title", "Website")
     safe_title = html_mod.escape(title)
     heading_font = design.get("heading_font", "Inter")
@@ -687,7 +693,7 @@ document.querySelectorAll(".icon-float").forEach(el=>{el.style.animationDelay=Ma
     }
     user_prompt = json.dumps(builder_data)
 
-    raw = call_claude_stream(system_build, user_prompt, model=MODEL_BUILD, max_tokens=12000)
+    raw = call_claude_stream(system_build, user_prompt, model=MODEL_BUILD, max_tokens=16000)
     raw = re.sub(r"^```(?:html)?\s*\n?", "", raw.strip(), flags=re.IGNORECASE)
     raw = re.sub(r"\n?```\s*$", "", raw)
 
@@ -764,9 +770,14 @@ def generate():
     def run():
         try:
             intent, architecture, design = agent_plan(enhanced_prompt)
-            section_count = len(architecture.get("sections", []))
+            section_count = len(architecture.get("sections", [])[:8])
             job["status"] = "building"
-            job["message"] = f"Building {section_count} sections with 3D effects..."
+            job["message"] = f"Building section 1 of {section_count}..."
+
+            def on_build_progress(sections_done, chars):
+                done = min(sections_done, section_count)
+                if done > 0:
+                    job["message"] = f"Building section {min(done + 1, section_count)} of {section_count}..."
 
             result_html = agent_component_builder(intent, architecture, design, enhanced_prompt, user_images)
             if user_images:
@@ -798,6 +809,46 @@ def job_status(job_id):
         with jobs_lock:
             jobs.pop(job_id, None)
     return jsonify(resp)
+
+
+@app.route("/refine", methods=["POST"])
+def refine():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing request body"}), 400
+    instruction = (data.get("instruction") or "").strip()
+    current_html = (data.get("current_html") or "").strip()
+    if not instruction:
+        return jsonify({"error": "Missing instruction"}), 400
+    if not current_html:
+        return jsonify({"error": "Missing current_html"}), 400
+
+    system_prompt = (
+        "You are an expert website refinement agent. You receive a complete HTML website "
+        "and a user instruction. Apply the instruction precisely and return ONLY the complete "
+        "modified HTML. No explanations. No markdown. No code fences. Raw HTML only. "
+        "For any images requested, use relevant Unsplash URLs formatted as "
+        "https://source.unsplash.com/1200x800/?keyword."
+    )
+    user_prompt = f"INSTRUCTION:\n{instruction}\n\nCURRENT HTML:\n{current_html}"
+
+    try:
+        response = client.messages.create(
+            model=MODEL_REFINE,
+            max_tokens=16000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        result_html = ""
+        for block in response.content:
+            if block.type == "text":
+                result_html += block.text
+        result_html = result_html.strip()
+        result_html = re.sub(r"^```(?:html)?\s*\n?", "", result_html, flags=re.IGNORECASE)
+        result_html = re.sub(r"\n?```\s*$", "", result_html)
+        return jsonify({"html": result_html, "message": "Refinement applied successfully."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
